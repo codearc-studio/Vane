@@ -1,5 +1,6 @@
 import CoreLocation
 import Observation
+import MapKit
 import SwiftData
 import SwiftUI
 
@@ -7,7 +8,7 @@ struct LocationsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \SavedPlace.createdAt) private var places: [SavedPlace]
+    @Query(sort: [SortDescriptor(\SavedPlace.sortOrder), SortDescriptor(\SavedPlace.createdAt)]) private var places: [SavedPlace]
     @Bindable var store: WeatherStore
     @State private var searchModel = PlaceSearchModel()
     @State private var query = ""
@@ -39,13 +40,13 @@ struct LocationsView: View {
 
                         if !places.isEmpty {
                             locationSection(title: "Saved places") {
-                                ForEach(places) { place in
+                                ForEach(Array(places.enumerated()), id: \.element.id) { index, place in
                                     HStack(spacing: 8) {
                                         Button { select(place) } label: {
                                             LocationRow(
                                                 symbol: "mappin.and.ellipse",
                                                 title: place.name,
-                                                subtitle: place.region,
+                                                subtitle: savedPlaceSubtitle(place),
                                                 selected: isSelected(place)
                                             )
                                             .padding(.horizontal, 17)
@@ -54,6 +55,8 @@ struct LocationsView: View {
                                         .vaneLiquidGlassButton(prominent: isSelected(place))
 
                                         Menu {
+                                            if index > 0 { Button { move(place, to: index - 1) } label: { Label("Move up", systemImage: "arrow.up") } }
+                                            if index < places.count - 1 { Button { move(place, to: index + 1) } label: { Label("Move down", systemImage: "arrow.down") } }
                                             Button(role: .destructive) { delete(place) } label: {
                                                 Label("Remove \(place.name)", systemImage: "trash")
                                             }
@@ -103,7 +106,7 @@ struct LocationsView: View {
             }
             .navigationTitle("Locations")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "Search for a place")
+            .searchable(text: $query, prompt: "City, airport, code or postal code")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -192,13 +195,13 @@ struct LocationsView: View {
     }
 
     private var currentLocationSubtitle: String {
-        store.authorizationStatus == .denied
+        store.authorizationStatus == .denied || store.authorizationStatus == .restricted
             ? "Location permission is off in Settings"
             : store.isUsingCurrentLocation ? store.snapshot.locationName : "Follow this iPhone"
     }
 
     private func isSelected(_ place: SavedPlace) -> Bool {
-        !store.isUsingCurrentLocation && store.snapshot.locationName == place.name
+        store.isSelected(place)
     }
 
     private func selectCurrentLocation() {
@@ -227,9 +230,28 @@ struct LocationsView: View {
     }
 
     private func delete(_ place: SavedPlace) {
+        let deletingSelection = store.isSelected(place)
         withAnimation(.spring(duration: 0.35, bounce: 0.08)) {
             modelContext.delete(place)
         }
+        try? modelContext.save()
+        if deletingSelection { store.resetSelection() }
+    }
+
+    private func move(_ place: SavedPlace, to destination: Int) {
+        var reordered = places
+        guard let source = reordered.firstIndex(where: { $0.id == place.id }) else { return }
+        let item = reordered.remove(at: source)
+        reordered.insert(item, at: min(max(destination, 0), reordered.count))
+        for (index, place) in reordered.enumerated() { place.sortOrder = index }
+        try? modelContext.save()
+    }
+
+    private func savedPlaceSubtitle(_ place: SavedPlace) -> String {
+        if store.isSelected(place), !store.snapshot.isPlaceholder {
+            return "\(store.snapshot.current.temperature.degrees) · \(store.snapshot.current.condition) · \(place.region)"
+        }
+        return place.region
     }
 }
 
@@ -289,17 +311,20 @@ final class PlaceSearchModel {
         isSearching = true
         defer { isSearching = false }
         do {
-            let marks = try await CLGeocoder().geocodeAddressString(cleaned)
+            guard let request = MKGeocodingRequest(addressString: cleaned) else { results = []; return }
+            let items = try await request.mapItems
             guard !Task.isCancelled else { return }
-            results = marks.prefix(8).compactMap { mark in
-                guard let location = mark.location else { return nil }
-                let name = mark.locality ?? mark.name ?? cleaned
-                let regionParts = [mark.administrativeArea, mark.country].compactMap { $0 }
+            results = items.prefix(8).map { item in
+                let name = item.addressRepresentations?.cityName ?? item.name ?? cleaned
+                let region = item.addressRepresentations?.cityWithContext(.automatic)
+                    ?? item.address?.shortAddress
+                    ?? item.addressRepresentations?.regionName
+                    ?? ""
                 return PlaceSearchResult(
                     name: name,
-                    region: regionParts.joined(separator: ", "),
-                    latitude: location.coordinate.latitude,
-                    longitude: location.coordinate.longitude
+                    region: region,
+                    latitude: item.location.coordinate.latitude,
+                    longitude: item.location.coordinate.longitude
                 )
             }
         } catch is CancellationError {

@@ -65,16 +65,26 @@ enum VaneTheme {
 struct AtmosphericBackground: View {
     @Environment(\.colorScheme) private var colorScheme
     var dark = false
+    var condition: CurrentConditions?
 
-    private var usesDarkPalette: Bool { dark || colorScheme == .dark }
+    init(dark: Bool = false, condition: CurrentConditions? = nil) {
+        self.dark = dark
+        self.condition = condition
+    }
+
+    private var usesDarkPalette: Bool { dark || colorScheme == .dark || condition?.isDaylight == false }
+
+    private var palette: [Color] {
+        guard !usesDarkPalette else { return [Color(red: 0.008, green: 0.025, blue: 0.055), Color(red: 0.018, green: 0.065, blue: 0.12), Color(red: 0.025, green: 0.10, blue: 0.19)] }
+        let symbol = condition?.symbolName.lowercased() ?? ""
+        if symbol.contains("rain") || symbol.contains("storm") { return [Color(red: 0.35, green: 0.48, blue: 0.62), Color(red: 0.62, green: 0.72, blue: 0.80), Color(red: 0.86, green: 0.90, blue: 0.93)] }
+        if symbol.contains("cloud") { return [Color(red: 0.64, green: 0.76, blue: 0.86), Color(red: 0.82, green: 0.88, blue: 0.93), Color(red: 0.96, green: 0.97, blue: 0.98)] }
+        return [Color(red: 0.68, green: 0.86, blue: 0.99), Color(red: 0.90, green: 0.96, blue: 1), Color(red: 1.0, green: 0.97, blue: 0.90)]
+    }
 
     var body: some View {
         ZStack {
-            if usesDarkPalette {
-                LinearGradient(colors: [Color(red: 0.008, green: 0.025, blue: 0.055), Color(red: 0.018, green: 0.065, blue: 0.12), Color(red: 0.025, green: 0.10, blue: 0.19)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            } else {
-                LinearGradient(colors: [Color(red: 0.76, green: 0.90, blue: 0.99), Color(red: 0.91, green: 0.96, blue: 1), Color(red: 0.98, green: 0.98, blue: 0.99)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            }
+            LinearGradient(colors: palette, startPoint: .topLeading, endPoint: .bottomTrailing)
             Circle().fill(.white.opacity(usesDarkPalette ? 0.035 : 0.5)).frame(width: 360, height: 360).blur(radius: 70).offset(x: -190, y: -330)
             Circle().fill(VaneTheme.blue.opacity(usesDarkPalette ? 0.12 : 0.08)).frame(width: 480, height: 480).blur(radius: 100).offset(x: 220, y: 320)
         }

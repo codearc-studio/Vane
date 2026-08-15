@@ -10,24 +10,33 @@ import SwiftData
 
 @main
 struct VaneApp: App {
-    private let modelContainer: ModelContainer = {
+    private let modelContainer: ModelContainer
+    private let storageRecoveryMessage: String?
+
+    init() {
         let schema = Schema([
             WeatherProfile.self,
             WeatherCheckIn.self,
             SavedPlace.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
+        let persistent = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            modelContainer = try ModelContainer(for: schema, configurations: [persistent])
+            storageRecoveryMessage = nil
         } catch {
-            fatalError("Unable to open Vane's private weather model: \(error)")
+            let originalError = error.localizedDescription
+            do {
+                modelContainer = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
+                storageRecoveryMessage = "Vane could not open its saved private data (\(originalError)). A temporary session is running so you can still view weather. Reinstall or contact Vane before relying on new check-ins."
+            } catch {
+                preconditionFailure("Vane could not create even a temporary data store: \(error)")
+            }
         }
-    }()
+    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(storageRecoveryMessage: storageRecoveryMessage)
         }
         .modelContainer(modelContainer)
     }

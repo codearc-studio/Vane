@@ -9,10 +9,17 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("appearance") private var appearanceRawValue = AppAppearance.system.rawValue
     @State private var weatherStore = WeatherStore()
     @State private var notificationManager = NotificationManager()
+    @State private var showStorageRecovery = false
+    var storageRecoveryMessage: String?
+
+    init(storageRecoveryMessage: String? = nil) {
+        self.storageRecoveryMessage = storageRecoveryMessage
+    }
 
     var body: some View {
         Group {
@@ -27,25 +34,27 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme((AppAppearance(rawValue: appearanceRawValue) ?? .system).colorScheme)
+        .task { DataCoordinator.prepare(context: modelContext) }
+        .onAppear { showStorageRecovery = storageRecoveryMessage != nil }
+        .alert("Saved data needs attention", isPresented: $showStorageRecovery) {
+            Button("Continue temporarily") { }
+        } message: { Text(storageRecoveryMessage ?? "") }
     }
 }
 
 struct MainTabView: View {
     @Bindable var weatherStore: WeatherStore
     @Bindable var notificationManager: NotificationManager
-    @State private var selectedTab = ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "sense" ? 1 : ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "settings" ? 2 : 0
+    @State private var selectedTab = ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "sense" || ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "settings" ? 1 : 0
 
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack { WeatherHomeView(store: weatherStore) }
-                .tabItem { Label("Forecast", systemImage: "cloud.sun.fill") }
+                .tabItem { Label("Weather", systemImage: "cloud.sun.fill") }
                 .tag(0)
-            NavigationStack { SenseView(snapshot: weatherStore.snapshot) }
-                .tabItem { Label("Sense", systemImage: "sparkles") }
+            NavigationStack { YouView(store: weatherStore, notifications: notificationManager) }
+                .tabItem { Label("You", systemImage: "person.crop.circle.fill") }
                 .tag(1)
-            NavigationStack { SettingsView(store: weatherStore, notifications: notificationManager) }
-                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                .tag(2)
         }
         .tint(VaneTheme.blue)
         .task { await weatherStore.start() }
