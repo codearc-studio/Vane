@@ -9,53 +9,54 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("appearance") private var appearanceRawValue = AppAppearance.system.rawValue
+    @State private var weatherStore = WeatherStore()
+    @State private var notificationManager = NotificationManager()
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+        Group {
+            if hasCompletedOnboarding {
+                MainTabView(weatherStore: weatherStore, notificationManager: notificationManager)
+            } else {
+                OnboardingView(store: weatherStore, notifications: notificationManager) {
+                    withAnimation(.easeInOut(duration: 0.45)) {
+                        hasCompletedOnboarding = true
                     }
                 }
             }
-        } detail: {
-            Text("Select an item")
         }
+        .preferredColorScheme((AppAppearance(rawValue: appearanceRawValue) ?? .system).colorScheme)
     }
+}
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+struct MainTabView: View {
+    @Bindable var weatherStore: WeatherStore
+    @Bindable var notificationManager: NotificationManager
+    @State private var selectedTab = ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "sense" ? 1 : ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "settings" ? 2 : 0
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            NavigationStack { WeatherHomeView(store: weatherStore) }
+                .tabItem { Label("Forecast", systemImage: "cloud.sun.fill") }
+                .tag(0)
+            NavigationStack { SenseView(snapshot: weatherStore.snapshot) }
+                .tabItem { Label("Sense", systemImage: "sparkles") }
+                .tag(1)
+            NavigationStack { SettingsView(store: weatherStore, notifications: notificationManager) }
+                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+                .tag(2)
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+        .tint(VaneTheme.blue)
+        .task { await weatherStore.start() }
+        .task { await notificationManager.refreshStatus() }
+        .onChange(of: weatherStore.snapshot.updatedAt) { _, _ in
+            Task { await notificationManager.schedule(snapshot: weatherStore.snapshot) }
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: [WeatherProfile.self, WeatherCheckIn.self, SavedPlace.self], inMemory: true)
 }

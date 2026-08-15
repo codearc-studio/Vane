@@ -10,16 +10,18 @@ import SwiftData
 
 @main
 struct VaneApp: App {
-    var sharedModelContainer: ModelContainer = {
+    private let modelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            WeatherProfile.self,
+            WeatherCheckIn.self,
+            SavedPlace.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            fatalError("Unable to open Vane's private weather model: \(error)")
         }
     }()
 
@@ -27,6 +29,6 @@ struct VaneApp: App {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(modelContainer)
     }
 }
