@@ -2,18 +2,34 @@ import SwiftData
 import SwiftUI
 
 struct CheckInView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     let snapshot: ForecastSnapshot
     var onSaved: (() -> Void)?
     @State private var response: FeelResponse?
     @State private var contexts: Set<FeelContext> = []
+    @State private var didSave = false
+    @State private var saveError: String?
 
     var body: some View {
         NavigationStack {
             ZStack {
                 AtmosphericBackground(condition: snapshot.current)
-                ScrollView {
+                if didSave {
+                    VStack(spacing: 16) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 68))
+                            .foregroundStyle(VaneTheme.blue)
+                            .symbolEffect(.bounce)
+                        Text("Check-in saved")
+                            .font(.largeTitle.bold())
+                        Text("This moment now helps Sense understand how \(snapshot.locationName)’s weather felt to you.")
+                            .foregroundStyle(VaneTheme.muted)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(28)
+                } else { ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         VStack(alignment: .leading, spacing: 8) {
                             SectionKicker(title: snapshot.locationName)
@@ -27,21 +43,24 @@ struct CheckInView: View {
                     }
                     .padding(20)
                     .containerRelativeFrame(.horizontal)
-                }
+                } }
             }
             .navigationTitle("Check In Now")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                if response != nil {
+                if !didSave { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+                if response != nil && !didSave {
                     ToolbarItem(placement: .confirmationAction) { Button("Save") { save() }.bold() }
                 }
             }
+            .alert("Check-in wasn’t saved", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+                Button("OK") {}
+            } message: { Text(saveError ?? "Please try again.") }
         }
     }
 
     private var responseChoices: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        LazyVGrid(columns: dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             ForEach(FeelResponse.allCases) { option in
                 Button { withAnimation(.smooth) { response = option } } label: {
                     VStack(spacing: 10) {
@@ -90,14 +109,20 @@ struct CheckInView: View {
     private func save() {
         guard let response else { return }
         let current = snapshot.current
-        modelContext.insert(WeatherCheckIn(temperature: Double(current.temperature), apparentTemperature: Double(current.apparentTemperature), humidity: current.humidity, windSpeed: Double(current.windSpeed), response: response, context: contexts, dewPoint: Double(current.dewPoint), windGust: Double(current.windGust), uvIndex: current.uvIndex, cloudCover: current.cloudCover, isTravel: snapshot.sourceID != "current"))
-        do { try modelContext.save() } catch { return }
+        modelContext.insert(WeatherCheckIn(temperature: Double(current.temperature), apparentTemperature: Double(current.apparentTemperature), humidity: current.humidity, windSpeed: Double(current.windSpeed), response: response, context: contexts, dewPoint: Double(current.dewPoint), windGust: Double(current.windGust), uvIndex: current.uvIndex, cloudCover: current.cloudCover, isTravel: snapshot.isTravelLocation, precipitationKind: current.precipitationKind, precipitationChance: current.precipitationChance, timeZoneIdentifier: snapshot.timeZoneIdentifier, locationName: snapshot.locationName))
+        do { try modelContext.save() } catch { saveError = "Vane couldn’t save this moment. Please try again."; return }
         onSaved?()
-        dismiss()
+        withAnimation(.spring(duration: 0.45, bounce: 0.16)) { didSave = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.35))
+            dismiss()
+        }
     }
 }
 
 struct CheckInHistoryView: View {
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.fahrenheit.rawValue
+    @AppStorage("windUnit") private var windUnitRaw = WindUnitPreference.milesPerHour.rawValue
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \WeatherCheckIn.createdAt, order: .reverse) private var checkIns: [WeatherCheckIn]
 
@@ -113,13 +138,14 @@ struct CheckInHistoryView: View {
                             HStack {
                                 Label(response.title, systemImage: response.symbol).font(.headline)
                                 Spacer()
-                                Text(checkIn.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(VaneTheme.muted)
+                                Text(recordFormatting(checkIn).shortDateTime(checkIn.createdAt)).font(.caption).foregroundStyle(VaneTheme.muted)
                             }
-                            Text("\(Int(checkIn.apparentTemperature.rounded()))° apparent · \(Int(checkIn.windSpeed.rounded())) mph wind · \(checkIn.humidity.formatted(.percent.precision(.fractionLength(0)))) humidity")
+                            Text("Feels Like \(formatting.degrees(checkIn.apparentTemperature, includeUnit: true)) · \(formatting.windSpeed(Int(checkIn.windSpeed.rounded()))) wind · \(checkIn.humidity.formatted(.percent.precision(.fractionLength(0)))) humidity")
                                 .font(.caption).foregroundStyle(VaneTheme.muted)
                             if !checkIn.contexts.isEmpty {
                                 Text(checkIn.contexts.map(\.title).sorted().joined(separator: " · ")).font(.caption2).foregroundStyle(VaneTheme.blue)
                             }
+                            if let locationName = checkIn.locationName { Text(locationName).font(.caption2).foregroundStyle(VaneTheme.muted) }
                         }
                         .padding(.vertical, 5)
                     } else {
@@ -139,6 +165,9 @@ struct CheckInHistoryView: View {
         for index in offsets { modelContext.delete(checkIns[index]) }
         try? modelContext.save()
     }
+
+    private var formatting: WeatherFormatting { WeatherFormatting(temperature: TemperatureUnitPreference(rawValue: temperatureUnitRaw) ?? .fahrenheit, wind: WindUnitPreference(rawValue: windUnitRaw) ?? .milesPerHour) }
+    private func recordFormatting(_ checkIn: WeatherCheckIn) -> WeatherFormatting { WeatherFormatting(temperature: TemperatureUnitPreference(rawValue: temperatureUnitRaw) ?? .fahrenheit, wind: WindUnitPreference(rawValue: windUnitRaw) ?? .milesPerHour, timeZone: checkIn.timeZoneIdentifier.flatMap(TimeZone.init(identifier:)) ?? .current) }
 }
 
 enum DataCoordinator {

@@ -5,6 +5,7 @@ import SwiftData
 import SwiftUI
 
 struct LocationsView: View {
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.fahrenheit.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -55,6 +56,8 @@ struct LocationsView: View {
                                         .vaneLiquidGlassButton(prominent: isSelected(place))
 
                                         Menu {
+                                            Button { setHome(place) } label: { Label(place.isHome ? "Home place" : "Set as home", systemImage: place.isHome ? "house.fill" : "house") }
+                                                .disabled(place.isHome)
                                             if index > 0 { Button { move(place, to: index - 1) } label: { Label("Move up", systemImage: "arrow.up") } }
                                             if index < places.count - 1 { Button { move(place, to: index + 1) } label: { Label("Move down", systemImage: "arrow.down") } }
                                             Button(role: .destructive) { delete(place) } label: {
@@ -222,7 +225,8 @@ struct LocationsView: View {
             name: result.name,
             region: result.region,
             latitude: result.latitude,
-            longitude: result.longitude
+            longitude: result.longitude,
+            timeZoneIdentifier: result.timeZoneIdentifier
         )
         if existing == nil { modelContext.insert(place) }
         Task { await store.loadSavedPlace(place) }
@@ -247,11 +251,18 @@ struct LocationsView: View {
         try? modelContext.save()
     }
 
+    private func setHome(_ place: SavedPlace) {
+        for saved in places { saved.isHome = saved.id == place.id }
+        try? modelContext.save()
+        if store.isSelected(place) { Task { await store.loadSavedPlace(place) } }
+    }
+
     private func savedPlaceSubtitle(_ place: SavedPlace) -> String {
         if store.isSelected(place), !store.snapshot.isPlaceholder {
-            return "\(store.snapshot.current.temperature.degrees) · \(store.snapshot.current.condition) · \(place.region)"
+            let formatting = WeatherFormatting(temperature: TemperatureUnitPreference(rawValue: temperatureUnitRaw) ?? .fahrenheit, timeZone: store.snapshot.timeZone)
+            return "\(formatting.degrees(store.snapshot.current.temperature)) · \(store.snapshot.current.condition) · \(place.isHome ? "Home · " : "")\(place.region)"
         }
-        return place.region
+        return place.isHome ? "Home · \(place.region)" : place.region
     }
 }
 
@@ -294,6 +305,7 @@ struct PlaceSearchResult: Identifiable, Sendable {
     let region: String
     let latitude: Double
     let longitude: Double
+    let timeZoneIdentifier: String?
 }
 
 @MainActor
@@ -311,22 +323,28 @@ final class PlaceSearchModel {
         isSearching = true
         defer { isSearching = false }
         do {
-            guard let request = MKGeocodingRequest(addressString: cleaned) else { results = []; return }
-            let items = try await request.mapItems
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = cleaned
+            request.resultTypes = [.address]
+            let items = try await MKLocalSearch(request: request).start().mapItems
             guard !Task.isCancelled else { return }
-            results = items.prefix(8).map { item in
+            var seen = Set<String>()
+            results = items.compactMap { item -> PlaceSearchResult? in
                 let name = item.addressRepresentations?.cityName ?? item.name ?? cleaned
                 let region = item.addressRepresentations?.cityWithContext(.automatic)
                     ?? item.address?.shortAddress
                     ?? item.addressRepresentations?.regionName
                     ?? ""
+                let key = "\(name.lowercased())|\(region.lowercased())|\(item.location.coordinate.latitude.formatted(.number.precision(.fractionLength(2))))|\(item.location.coordinate.longitude.formatted(.number.precision(.fractionLength(2))))"
+                guard seen.insert(key).inserted else { return nil }
                 return PlaceSearchResult(
                     name: name,
                     region: region,
                     latitude: item.location.coordinate.latitude,
-                    longitude: item.location.coordinate.longitude
+                    longitude: item.location.coordinate.longitude,
+                    timeZoneIdentifier: item.timeZone?.identifier
                 )
-            }
+            }.prefix(12).map { $0 }
         } catch is CancellationError {
             return
         } catch {

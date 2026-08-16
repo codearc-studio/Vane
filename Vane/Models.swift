@@ -7,16 +7,14 @@ final class WeatherProfile {
     var temperaturePreference: Double
     var windSensitivity: Double
     var humiditySensitivity: Double
-    var enjoysRain: Bool
     var usesFeelsLikeTemperature: Bool = true
     var checkInFrequencyRaw: String = CheckInFrequency.recommended.rawValue
 
-    init(createdAt: Date = .now, temperaturePreference: Double = 0, windSensitivity: Double = 0.5, humiditySensitivity: Double = 0.5, enjoysRain: Bool = false, usesFeelsLikeTemperature: Bool = true, checkInFrequency: CheckInFrequency = .recommended) {
+    init(createdAt: Date = .now, temperaturePreference: Double = 0, windSensitivity: Double = 0.5, humiditySensitivity: Double = 0.5, usesFeelsLikeTemperature: Bool = true, checkInFrequency: CheckInFrequency = .recommended) {
         self.createdAt = createdAt
         self.temperaturePreference = temperaturePreference
         self.windSensitivity = windSensitivity
         self.humiditySensitivity = humiditySensitivity
-        self.enjoysRain = enjoysRain
         self.usesFeelsLikeTemperature = usesFeelsLikeTemperature
         self.checkInFrequencyRaw = checkInFrequency.rawValue
     }
@@ -42,8 +40,12 @@ final class WeatherCheckIn {
     var uvIndex: Int?
     var cloudCover: Double?
     var isTravel: Bool = false
+    var precipitationKindRaw: String = PrecipitationKind.none.rawValue
+    var precipitationChance: Double = 0
+    var timeZoneIdentifier: String?
+    var locationName: String?
 
-    init(createdAt: Date = .now, temperature: Double, apparentTemperature: Double, humidity: Double, windSpeed: Double, response: FeelResponse, context: Set<FeelContext> = [], dewPoint: Double? = nil, windGust: Double? = nil, uvIndex: Int? = nil, cloudCover: Double? = nil, isTravel: Bool = false) {
+    init(createdAt: Date = .now, temperature: Double, apparentTemperature: Double, humidity: Double, windSpeed: Double, response: FeelResponse, context: Set<FeelContext> = [], dewPoint: Double? = nil, windGust: Double? = nil, uvIndex: Int? = nil, cloudCover: Double? = nil, isTravel: Bool = false, precipitationKind: PrecipitationKind = .none, precipitationChance: Double = 0, timeZoneIdentifier: String? = nil, locationName: String? = nil) {
         self.createdAt = createdAt
         self.temperature = temperature
         self.apparentTemperature = apparentTemperature
@@ -56,11 +58,16 @@ final class WeatherCheckIn {
         self.uvIndex = uvIndex
         self.cloudCover = cloudCover
         self.isTravel = isTravel
+        self.precipitationKindRaw = precipitationKind.rawValue
+        self.precipitationChance = precipitationChance
+        self.timeZoneIdentifier = timeZoneIdentifier
+        self.locationName = locationName
     }
 
     /// Unknown values are ignored instead of silently becoming comfortable evidence.
     var feelResponse: FeelResponse? { FeelResponse(storedValue: response) }
     var contexts: Set<FeelContext> { Set(contextRaw.split(separator: ",").compactMap { FeelContext(rawValue: String($0)) }) }
+    var precipitationKind: PrecipitationKind { PrecipitationKind(rawValue: precipitationKindRaw) ?? .none }
 }
 
 @Model
@@ -72,8 +79,10 @@ final class SavedPlace {
     var longitude: Double
     var createdAt: Date
     var sortOrder: Int = 0
+    var timeZoneIdentifier: String?
+    var isHome: Bool = false
 
-    init(id: UUID = UUID(), name: String, region: String, latitude: Double, longitude: Double, createdAt: Date = .now, sortOrder: Int = 0) {
+    init(id: UUID = UUID(), name: String, region: String, latitude: Double, longitude: Double, createdAt: Date = .now, sortOrder: Int = 0, timeZoneIdentifier: String? = nil, isHome: Bool = false) {
         self.id = id
         self.name = name
         self.region = region
@@ -81,10 +90,12 @@ final class SavedPlace {
         self.longitude = longitude
         self.createdAt = createdAt
         self.sortOrder = sortOrder
+        self.timeZoneIdentifier = timeZoneIdentifier
+        self.isHome = isHome
     }
 }
 
-enum FeelResponse: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum FeelResponse: String, CaseIterable, Identifiable, Sendable {
     case freezing = "freezing"
     case cold = "cold"
     case chilly = "chilly"
@@ -145,7 +156,7 @@ enum FeelResponse: String, CaseIterable, Identifiable, Sendable {
     var isWarm: Bool { [.warm, .hot, .veryHot].contains(self) }
 }
 
-enum FeelContext: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum FeelContext: String, CaseIterable, Identifiable, Sendable {
     case humidity, wind, sun, dampness, nothing
     var id: String { rawValue }
     var title: String {
@@ -168,7 +179,7 @@ enum FeelContext: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-enum CheckInFrequency: String, CaseIterable, Identifiable {
+nonisolated enum CheckInFrequency: String, CaseIterable, Identifiable, Sendable {
     case more, recommended, less, minimal
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
@@ -192,8 +203,14 @@ struct ForecastSnapshot: Sendable {
     let hourly: [HourlyConditions]
     let daily: [DailyConditions]
     let alerts: [WeatherAlertSnapshot]
+    let timeZoneIdentifier: String
+    let isTravelLocation: Bool
+    let latitude: Double
+    let longitude: Double
+    let locationAccuracy: Double?
+    let airQuality: AirQualitySnapshot?
 
-    init(locationName: String, sourceID: String = "current", isSample: Bool, isPlaceholder: Bool = false, updatedAt: Date, current: CurrentConditions, hourly: [HourlyConditions], daily: [DailyConditions], alerts: [WeatherAlertSnapshot] = []) {
+    init(locationName: String, sourceID: String = "current", isSample: Bool, isPlaceholder: Bool = false, updatedAt: Date, current: CurrentConditions, hourly: [HourlyConditions], daily: [DailyConditions], alerts: [WeatherAlertSnapshot] = [], timeZoneIdentifier: String = TimeZone.current.identifier, isTravelLocation: Bool = false, latitude: Double = 0, longitude: Double = 0, locationAccuracy: Double? = nil, airQuality: AirQualitySnapshot? = nil) {
         self.locationName = locationName
         self.sourceID = sourceID
         self.isSample = isSample
@@ -203,22 +220,47 @@ struct ForecastSnapshot: Sendable {
         self.hourly = hourly
         self.daily = daily
         self.alerts = alerts
+        self.timeZoneIdentifier = timeZoneIdentifier
+        self.isTravelLocation = isTravelLocation
+        self.latitude = latitude
+        self.longitude = longitude
+        self.locationAccuracy = locationAccuracy
+        self.airQuality = airQuality
     }
 
     static let empty = ForecastSnapshot(locationName: "Choose a location", sourceID: "none", isSample: false, isPlaceholder: true, updatedAt: .distantPast, current: CurrentConditions(temperature: 0, apparentTemperature: 0, condition: "", symbolName: "location.slash", precipitationChance: 0, humidity: 0, windSpeed: 0, windDirection: "", uvIndex: 0, visibility: 0, pressure: 0), hourly: [], daily: [])
 
     static let sample = ForecastSnapshot(
         locationName: "New York", sourceID: "sample", isSample: true, updatedAt: .now,
-        current: CurrentConditions(temperature: 72, apparentTemperature: 73, condition: "Partly Cloudy", symbolName: "cloud.sun.fill", precipitationChance: 0.18, humidity: 0.54, windSpeed: 7, windDirection: "SW", uvIndex: 5, visibility: 10, pressure: 1017, dewPoint: 55, windGust: 12, cloudCover: 0.45, isDaylight: true),
+        current: CurrentConditions(temperature: 72, apparentTemperature: 73, condition: "Partly Cloudy", symbolName: "cloud.sun.fill", precipitationChance: 0.18, humidity: 0.54, windSpeed: 7, windDirection: "SW", windDirectionDegrees: 225, uvIndex: 5, visibility: 10, pressure: 1017, pressureTrend: "Steady", dewPoint: 55, windGust: 12, cloudCover: 0.45, isDaylight: true),
         hourly: (0..<24).map { offset in
             HourlyConditions(date: Calendar.current.date(byAdding: .hour, value: offset, to: .now) ?? .now, temperature: 72 + min(offset, 5), apparentTemperature: 73 + min(offset, 5), symbolName: offset < 8 ? "cloud.sun.fill" : "cloud.fill", condition: offset < 8 ? "Partly Cloudy" : "Cloudy", precipitationChance: offset == 6 ? 0.32 : 0.12, humidity: 0.54, windSpeed: 7, windGust: 12, dewPoint: 55, cloudCover: 0.45, isDaylight: offset < 10)
         },
         daily: (0..<10).map { offset in
-            DailyConditions(date: Calendar.current.date(byAdding: .day, value: offset, to: .now) ?? .now, low: 64 + offset % 3, high: 76 + offset % 6, symbolName: offset == 1 ? "cloud.rain.fill" : "cloud.sun.fill", condition: offset == 1 ? "Rain" : "Partly Cloudy", precipitationChance: offset == 1 ? 0.62 : 0.18, sunrise: Calendar.current.date(bySettingHour: 6, minute: 12, second: 0, of: .now), sunset: Calendar.current.date(bySettingHour: 19, minute: 52, second: 0, of: .now), uvIndex: 5, windSpeed: 9, windGust: 15, precipitationAmount: offset == 1 ? 0.28 : 0)
-        }
+            DailyConditions(date: Calendar.current.date(byAdding: .day, value: offset, to: .now) ?? .now, low: 64 + offset % 3, high: 76 + offset % 6, symbolName: offset == 1 ? "cloud.rain.fill" : "cloud.sun.fill", condition: offset == 1 ? "Rain" : "Partly Cloudy", precipitationChance: offset == 1 ? 0.62 : 0.18, sunrise: Calendar.current.date(bySettingHour: 6, minute: 12, second: 0, of: .now), sunset: Calendar.current.date(bySettingHour: 19, minute: 52, second: 0, of: .now), uvIndex: 5, windSpeed: 9, windGust: 15, precipitationAmount: offset == 1 ? 0.28 : 0, civilDawn: Calendar.current.date(bySettingHour: 5, minute: 42, second: 0, of: .now), solarNoon: Calendar.current.date(bySettingHour: 13, minute: 2, second: 0, of: .now), civilDusk: Calendar.current.date(bySettingHour: 20, minute: 22, second: 0, of: .now), moonPhase: "Waxing Crescent", moonrise: Calendar.current.date(bySettingHour: 10, minute: 4, second: 0, of: .now), moonset: Calendar.current.date(bySettingHour: 22, minute: 14, second: 0, of: .now))
+        },
+        latitude: 40.7128,
+        longitude: -74.006,
+        airQuality: AirQualitySnapshot(index: 42, pm25: 7.8, pm10: 14.1, ozone: 62.4, nitrogenDioxide: 18.2, updatedAt: .now)
     )
 
-    static var screenshotPreview: ForecastSnapshot { ForecastSnapshot(locationName: sample.locationName, sourceID: sample.sourceID, isSample: false, updatedAt: sample.updatedAt, current: sample.current, hourly: sample.hourly, daily: sample.daily) }
+    static var screenshotPreview: ForecastSnapshot { ForecastSnapshot(locationName: sample.locationName, sourceID: sample.sourceID, isSample: false, updatedAt: sample.updatedAt, current: sample.current, hourly: sample.hourly, daily: sample.daily, latitude: sample.latitude, longitude: sample.longitude, airQuality: sample.airQuality) }
+
+    var timeZone: TimeZone { TimeZone(identifier: timeZoneIdentifier) ?? .current }
+
+    var calendar: Calendar {
+        var value = Calendar(identifier: .gregorian)
+        value.timeZone = timeZone
+        return value
+    }
+
+    func replacingAirQuality(_ airQuality: AirQualitySnapshot?) -> ForecastSnapshot {
+        ForecastSnapshot(locationName: locationName, sourceID: sourceID, isSample: isSample, isPlaceholder: isPlaceholder, updatedAt: updatedAt, current: current, hourly: hourly, daily: daily, alerts: alerts, timeZoneIdentifier: timeZoneIdentifier, isTravelLocation: isTravelLocation, latitude: latitude, longitude: longitude, locationAccuracy: locationAccuracy, airQuality: airQuality)
+    }
+}
+
+nonisolated enum PrecipitationKind: String, Sendable {
+    case none, rain, snow, mixed
 }
 
 struct CurrentConditions: Sendable {
@@ -230,13 +272,14 @@ struct CurrentConditions: Sendable {
     let humidity: Double
     let windSpeed: Int
     let windDirection: String
+    var windDirectionDegrees: Double = 0
     let uvIndex: Int
     let visibility: Int
     let pressure: Int
+    var pressureTrend: String = "Steady"
     var dewPoint: Int = 0
     var windGust: Int = 0
-    var precipitationType: String = "None"
-    var precipitationIntensity: Double = 0
+    var precipitationKind: PrecipitationKind = .none
     var cloudCover: Double = 0
     var isDaylight: Bool = true
 }
@@ -254,10 +297,19 @@ struct HourlyConditions: Identifiable, Sendable {
     let dewPoint: Int
     let cloudCover: Double
     let isDaylight: Bool
+    let precipitationKind: PrecipitationKind
     var id: Date { date }
 
-    init(date: Date, temperature: Int, apparentTemperature: Int? = nil, symbolName: String, condition: String = "", precipitationChance: Double, humidity: Double = 0.5, windSpeed: Int = 0, windGust: Int = 0, dewPoint: Int = 0, cloudCover: Double = 0, isDaylight: Bool = true) {
-        self.date = date; self.temperature = temperature; self.apparentTemperature = apparentTemperature ?? temperature; self.symbolName = symbolName; self.condition = condition; self.precipitationChance = precipitationChance; self.humidity = humidity; self.windSpeed = windSpeed; self.windGust = windGust; self.dewPoint = dewPoint; self.cloudCover = cloudCover; self.isDaylight = isDaylight
+    init(date: Date, temperature: Int, apparentTemperature: Int? = nil, symbolName: String, condition: String = "", precipitationChance: Double, humidity: Double = 0.5, windSpeed: Int = 0, windGust: Int = 0, dewPoint: Int = 0, cloudCover: Double = 0, isDaylight: Bool = true, precipitationKind: PrecipitationKind? = nil) {
+        self.date = date; self.temperature = temperature; self.apparentTemperature = apparentTemperature ?? temperature; self.symbolName = symbolName; self.condition = condition; self.precipitationChance = precipitationChance; self.humidity = humidity; self.windSpeed = windSpeed; self.windGust = windGust; self.dewPoint = dewPoint; self.cloudCover = cloudCover; self.isDaylight = isDaylight; self.precipitationKind = precipitationKind ?? Self.inferPrecipitationKind(symbolName: symbolName, condition: condition)
+    }
+
+    private static func inferPrecipitationKind(symbolName: String, condition: String) -> PrecipitationKind {
+        let value = (symbolName + " " + condition).lowercased()
+        if value.contains("sleet") || value.contains("mixed") || value.contains("wintry") { return .mixed }
+        if value.contains("snow") || value.contains("flurr") { return .snow }
+        if value.contains("rain") || value.contains("drizzle") || value.contains("shower") { return .rain }
+        return .none
     }
 }
 
@@ -274,10 +326,47 @@ struct DailyConditions: Identifiable, Sendable, Hashable {
     let windSpeed: Int
     let windGust: Int
     let precipitationAmount: Double
+    var civilDawn: Date? = nil
+    var solarNoon: Date? = nil
+    var civilDusk: Date? = nil
+    var moonPhase: String = ""
+    var moonrise: Date? = nil
+    var moonset: Date? = nil
     var id: Date { date }
 
-    init(date: Date, low: Int, high: Int, symbolName: String, condition: String = "", precipitationChance: Double, sunrise: Date? = nil, sunset: Date? = nil, uvIndex: Int = 0, windSpeed: Int = 0, windGust: Int = 0, precipitationAmount: Double = 0) {
-        self.date = date; self.low = low; self.high = high; self.symbolName = symbolName; self.condition = condition; self.precipitationChance = precipitationChance; self.sunrise = sunrise; self.sunset = sunset; self.uvIndex = uvIndex; self.windSpeed = windSpeed; self.windGust = windGust; self.precipitationAmount = precipitationAmount
+    init(date: Date, low: Int, high: Int, symbolName: String, condition: String = "", precipitationChance: Double, sunrise: Date? = nil, sunset: Date? = nil, uvIndex: Int = 0, windSpeed: Int = 0, windGust: Int = 0, precipitationAmount: Double = 0, civilDawn: Date? = nil, solarNoon: Date? = nil, civilDusk: Date? = nil, moonPhase: String = "", moonrise: Date? = nil, moonset: Date? = nil) {
+        self.date = date; self.low = low; self.high = high; self.symbolName = symbolName; self.condition = condition; self.precipitationChance = precipitationChance; self.sunrise = sunrise; self.sunset = sunset; self.uvIndex = uvIndex; self.windSpeed = windSpeed; self.windGust = windGust; self.precipitationAmount = precipitationAmount; self.civilDawn = civilDawn; self.solarNoon = solarNoon; self.civilDusk = civilDusk; self.moonPhase = moonPhase; self.moonrise = moonrise; self.moonset = moonset
+    }
+}
+
+struct AirQualitySnapshot: Sendable, Hashable {
+    let index: Int
+    let pm25: Double
+    let pm10: Double
+    let ozone: Double
+    let nitrogenDioxide: Double
+    let updatedAt: Date
+
+    var category: String {
+        switch index {
+        case ...50: "Good"
+        case ...100: "Moderate"
+        case ...150: "Unhealthy for sensitive groups"
+        case ...200: "Unhealthy"
+        case ...300: "Very unhealthy"
+        default: "Hazardous"
+        }
+    }
+
+    var guidance: String {
+        switch index {
+        case ...50: "Air quality is considered satisfactory for most people."
+        case ...100: "Unusually sensitive people may notice mild effects outdoors."
+        case ...150: "Sensitive groups should consider reducing long or intense outdoor activity."
+        case ...200: "Everyone may begin to notice effects; sensitive groups should limit outdoor exertion."
+        case ...300: "Avoid prolonged outdoor exertion, especially if you are sensitive to air pollution."
+        default: "Health warning: avoid outdoor exertion and follow local public-health guidance."
+        }
     }
 }
 
@@ -297,7 +386,7 @@ struct WeatherAttributionInfo: Sendable {
     let combinedMarkDarkURL: URL
 }
 
-enum TemperatureUnitPreference: String, CaseIterable, Identifiable {
+nonisolated enum TemperatureUnitPreference: String, CaseIterable, Identifiable, Sendable {
     case fahrenheit, celsius
     var id: String { rawValue }
     var title: String { self == .fahrenheit ? "Fahrenheit" : "Celsius" }
@@ -305,21 +394,21 @@ enum TemperatureUnitPreference: String, CaseIterable, Identifiable {
     var symbol: String { self == .fahrenheit ? "°F" : "°C" }
 }
 
-enum WindUnitPreference: String, CaseIterable, Identifiable {
+nonisolated enum WindUnitPreference: String, CaseIterable, Identifiable, Sendable {
     case milesPerHour, kilometersPerHour
     var id: String { rawValue }
     var title: String { self == .milesPerHour ? "mph" : "km/h" }
     func value(_ mph: Int) -> Int { self == .milesPerHour ? mph : Int((Double(mph) * 1.60934).rounded()) }
 }
 
-enum PressureUnitPreference: String, CaseIterable, Identifiable {
+nonisolated enum PressureUnitPreference: String, CaseIterable, Identifiable, Sendable {
     case hectopascals, inchesOfMercury
     var id: String { rawValue }
     var title: String { self == .hectopascals ? "hPa" : "inHg" }
     func formatted(_ hPa: Int) -> String { self == .hectopascals ? "\(hPa) hPa" : String(format: "%.2f inHg", Double(hPa) * 0.02953) }
 }
 
-enum PrecipitationUnitPreference: String, CaseIterable, Identifiable {
+nonisolated enum PrecipitationUnitPreference: String, CaseIterable, Identifiable, Sendable {
     case inches, millimeters
     var id: String { rawValue }
     var title: String { rawValue.capitalized }

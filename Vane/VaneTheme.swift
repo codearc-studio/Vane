@@ -72,7 +72,9 @@ struct AtmosphericBackground: View {
         self.condition = condition
     }
 
-    private var usesDarkPalette: Bool { dark || colorScheme == .dark || condition?.isDaylight == false }
+    // Appearance controls light vs. dark. Weather can still influence the
+    // light palette, but nighttime should never override an explicit Light choice.
+    private var usesDarkPalette: Bool { dark || colorScheme == .dark }
 
     private var palette: [Color] {
         guard !usesDarkPalette else { return [Color(red: 0.008, green: 0.025, blue: 0.055), Color(red: 0.018, green: 0.065, blue: 0.12), Color(red: 0.025, green: 0.10, blue: 0.19)] }
@@ -139,38 +141,6 @@ struct VaneMark: View {
             .aspectRatio(1187 / 557, contentMode: .fit)
             .frame(width: size, height: size * 0.47)
         .accessibilityHidden(true)
-    }
-}
-
-struct CompassRose: View {
-    var color: Color = .white
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(color.opacity(0.10), lineWidth: 1)
-            Circle().stroke(color.opacity(0.08), lineWidth: 1).padding(18)
-            Rectangle().fill(color.opacity(0.15)).frame(width: 1)
-            Rectangle().fill(color.opacity(0.15)).frame(height: 1)
-            Image(systemName: "location.north.fill").font(.system(size: 22, weight: .light)).foregroundStyle(color.opacity(0.42)).offset(y: -29)
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-extension Int {
-    var degrees: String { "\(self)°" }
-}
-
-struct VaneGlassEffectContainer<Content: View>: View {
-    var spacing: CGFloat = 10
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) { content }
-        } else {
-            content
-        }
     }
 }
 

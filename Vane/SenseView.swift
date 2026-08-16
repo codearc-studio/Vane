@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct SenseView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Query(sort: \WeatherCheckIn.createdAt, order: .reverse) private var checkIns: [WeatherCheckIn]
     @Query private var profiles: [WeatherProfile]
     @State private var axis: FeelContext = .humidity
@@ -15,6 +16,7 @@ struct SenseView: View {
         }
     }
     private var summary: SenseProfileSummary { GuidanceEngine.profileSummary(temperaturePreference: profile?.temperaturePreference ?? 0, windSensitivity: profile?.windSensitivity ?? 0.5, humiditySensitivity: profile?.humiditySensitivity ?? 0.5, samples: samples) }
+    private var currentGuidance: PersonalGuidance { GuidanceEngine.make(snapshot: snapshot, temperaturePreference: profile?.temperaturePreference ?? 0, windSensitivity: profile?.windSensitivity ?? 0.5, humiditySensitivity: profile?.humiditySensitivity ?? 0.5, usesFeelsLikeTemperature: profile?.usesFeelsLikeTemperature ?? true, samples: samples) }
 
     var body: some View {
         ZStack {
@@ -36,7 +38,7 @@ struct SenseView: View {
                     learningNote
                 }
                 .padding(18)
-                .padding(.bottom, 80)
+                .padding(.bottom, dynamicTypeSize.isAccessibilitySize ? 190 : 80)
                 .containerRelativeFrame(.horizontal)
             }
             .scrollIndicators(.hidden)
@@ -49,9 +51,9 @@ struct SenseView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack { SectionKicker(title: "Right now"); Spacer(); Text(summary.status.rawValue).font(.caption.bold()).foregroundStyle(VaneTheme.blue) }
-                if summary.canPersonalize {
+                if currentGuidance.isPersonalized || currentGuidance.isEstimate {
                     Text(currentFitTitle).font(.title2.bold())
-                    Text("Current conditions are compared with recent and seasonally similar check-ins.").font(.subheadline).foregroundStyle(VaneTheme.muted)
+                    Text(currentGuidance.isEstimate ? currentGuidance.detail : "Current conditions are compared with recent and seasonally similar check-ins.").font(.subheadline).foregroundStyle(VaneTheme.muted)
                 } else {
                     Text("Still learning your range").font(.title2.bold())
                     Text("Current weather is not presented as a learned personal result yet.").font(.subheadline).foregroundStyle(VaneTheme.muted)
@@ -75,11 +77,11 @@ struct SenseView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 16) {
                 SectionKicker(title: "Familiar conditions")
-                Picker("Second condition", selection: $axis) {
-                    Text("Humidity").tag(FeelContext.humidity)
-                    Text("Wind").tag(FeelContext.wind)
-                    Text("Sun").tag(FeelContext.sun)
-                }.pickerStyle(.segmented)
+                HStack(spacing: 8) {
+                    axisButton(.humidity, "Humidity", "humidity.fill")
+                    axisButton(.wind, "Wind", "wind")
+                    axisButton(.sun, "Sun", "sun.max.fill")
+                }
 
                 HStack(alignment: .top, spacing: 8) {
                     VStack { Text(axisHighLabel); Spacer(); Text(axisLowLabel) }
@@ -92,7 +94,7 @@ struct SenseView: View {
                                     RoundedRectangle(cornerRadius: 8)
                                         .fill(fieldColor(column: column).opacity(0.10 + familiarity * 0.82))
                                         .frame(height: 32)
-                                        .overlay { Text(familiarity >= 0.62 ? "•" : familiarity >= 0.2 ? "·" : "").foregroundStyle(.white).accessibilityHidden(true) }
+                                        .overlay { Image(systemName: familiarity >= 0.62 ? "checkmark" : familiarity >= 0.2 ? "circle.fill" : "circle").font(.system(size: familiarity >= 0.62 ? 11 : 7, weight: .bold)).foregroundStyle(familiarity >= 0.2 ? .white : VaneTheme.muted.opacity(0.45)).accessibilityHidden(true) }
                                         .accessibilityLabel("\(temperatureLabel(column)), \(secondaryLabel(row)), \(familiarityLabel(familiarity))")
                                 }
                             }
@@ -100,9 +102,27 @@ struct SenseView: View {
                     }
                 }
                 HStack { Text("COOLER"); Spacer(); Text("MILD"); Spacer(); Text("WARMER") }.font(.caption2.bold()).foregroundStyle(VaneTheme.muted)
-                Text("Dots and color strength both indicate familiarity: little, some, or familiar context.").font(.caption).foregroundStyle(VaneTheme.muted)
+                HStack(spacing: 14) {
+                    legend("circle", "Little")
+                    legend("circle.fill", "Some")
+                    legend("checkmark", "Familiar")
+                }
+                Text("Color shows the temperature range; the symbol shows how much relevant check-in context Sense has for that combination.").font(.caption).foregroundStyle(VaneTheme.muted)
             }.padding(20)
         }
+    }
+
+    private func axisButton(_ value: FeelContext, _ title: String, _ symbol: String) -> some View {
+        Button { withAnimation(.spring(duration: 0.35, bounce: 0.12)) { axis = value } } label: {
+            VStack(spacing: 7) { Image(systemName: symbol); Text(title).font(.caption.bold()) }
+                .frame(maxWidth: .infinity, minHeight: 62)
+                .foregroundStyle(axis == value ? .white : VaneTheme.ink)
+                .background(axis == value ? VaneTheme.blue : VaneTheme.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 17))
+        }.buttonStyle(.plain)
+    }
+
+    private func legend(_ symbol: String, _ title: String) -> some View {
+        Label(title, systemImage: symbol).font(.caption2.weight(.semibold)).foregroundStyle(VaneTheme.muted)
     }
 
     private var signals: some View {
@@ -129,10 +149,11 @@ struct SenseView: View {
     }
 
     private var currentFitTitle: String {
-        let current = Double(profile?.usesFeelsLikeTemperature == false ? snapshot.current.temperature : snapshot.current.apparentTemperature)
-        if current < summary.comfortLow - 3 { return "Below your familiar range" }
-        if current > summary.comfortHigh + 3 { return "Above your familiar range" }
-        return "Inside your familiar range"
+        switch currentGuidance.headline {
+        case let value where value.contains("Freezing") || value.contains("Cold") || value.contains("Chilly"): return "Below your familiar range"
+        case let value where value.contains("Warm") || value.contains("Hot"): return "Above your familiar range"
+        default: return "Inside your familiar range"
+        }
     }
 
     private var axisHighLabel: String { axis == .wind ? "WINDY" : axis == .sun ? "BRIGHT" : "HUMID" }

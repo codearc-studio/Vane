@@ -1,30 +1,99 @@
 {
-  "fill" : {
-    "automatic-gradient" : "srgb:0.02745,0.07843,0.14902,1.00000"
-  },
+  "features" : [
+    "refractivity"
+  ],
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "display-p3:0.89020,0.95294,1.00000,1.00000",
+          "srgb:0.54902,0.79608,1.00000,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "display-p3:0.03922,0.08627,0.15294,1.00000",
+          "display-p3:0.05490,0.21569,0.38824,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 1
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 0
+          }
+        }
+      }
+    }
+  ],
   "groups" : [
     {
+      "blur-material" : null,
       "layers" : [
         {
           "image-name" : "Vane.png",
           "name" : "Vane",
           "position" : {
-            "scale" : 0.68,
+            "scale" : 0.66,
             "translation-in-points" : [
-              5.440000000000055,
-              1.0199999999999818
+              5.279999999999973,
+              0.9900000000000091
             ]
           }
         }
       ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.3
-      }
+      "refractivity-specializations" : [
+        {
+          "value" : {
+            "depth" : 0.5,
+            "enabled" : true,
+            "strength" : 0.22
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "depth" : 0.5,
+            "enabled" : true,
+            "strength" : 0.18
+          }
+        }
+      ],
+      "shadow-specializations" : [
+        {
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.35
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.3
+          }
+        }
+      ],
+      "translucency-specializations" : [
+        {
+          "value" : {
+            "enabled" : true,
+            "value" : 0.24
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "enabled" : true,
+            "value" : 0.2
+          }
+        }
+      ]
     }
   ],
   "supported-platforms" : {

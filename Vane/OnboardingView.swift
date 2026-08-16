@@ -18,7 +18,7 @@ struct OnboardingView: View {
             ZStack {
                 AtmosphericBackground()
                 VStack(spacing: 0) {
-                    HStack { if page > 0 { Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.accessibilityLabel("Back") }; Spacer() }.padding(.horizontal, 20).padding(.top, 8)
+                    HStack { if page > 0 { Button { move(-1) } label: { Image(systemName: "chevron.left").font(.body.weight(.semibold)).frame(width: 44, height: 44) }.accessibilityLabel("Back") }; Spacer() }.padding(.horizontal, 20).padding(.top, 8)
                     TabView(selection: $page) {
                         welcome.frame(width: viewport.size.width).tag(0)
                         temperature.frame(width: viewport.size.width).tag(1)
@@ -28,6 +28,7 @@ struct OnboardingView: View {
                     }.tabViewStyle(.page(indexDisplayMode: .never)).animation(reduceMotion ? nil : .smooth, value: page)
                     controls
                 }
+                .frame(width: viewport.size.width)
             }
             .frame(width: viewport.size.width, height: viewport.size.height)
         }
@@ -40,7 +41,7 @@ struct OnboardingView: View {
             VStack(spacing: 24) {
                 Spacer(); VaneMark(size: 160).shadow(color: VaneTheme.blue.opacity(0.15), radius: 24, y: 12)
                 Text("Weather, the way\nit feels to you.").font(.largeTitle.bold()).multilineTextAlignment(.center)
-                Text("Sense learns from occasional, optional check-ins. It starts gently, improves over time, and never pretends to know more than you have taught it.").font(.title3).foregroundStyle(VaneTheme.muted).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).frame(width: max(geometry.size.width - 48, 0))
+                Text("Sense learns from occasional, optional check-ins. It starts gently, improves over time, and never pretends to know more than it has learned from your check-ins.").font(.title3).foregroundStyle(VaneTheme.muted).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).frame(width: max(geometry.size.width - 48, 0))
                 Spacer()
             }
             .frame(width: geometry.size.width)
@@ -49,9 +50,9 @@ struct OnboardingView: View {
 
     private var temperature: some View {
         OnboardingPage(title: "Which sounds most like you?", subtitle: "This is only a starting point. Choose Not sure if none feels right.", symbol: "thermometer.medium") {
-            choice("I usually want more warmth", selected: temperaturePreference == -0.7) { temperaturePreference = -0.7 }
+            choice("I usually want more warmth", selected: temperaturePreference == 0.7) { temperaturePreference = 0.7 }
             choice("Mild weather feels about right", selected: temperaturePreference == 0) { temperaturePreference = 0 }
-            choice("I usually want less warmth", selected: temperaturePreference == 0.7) { temperaturePreference = 0.7 }
+            choice("I usually want less warmth", selected: temperaturePreference == -0.7) { temperaturePreference = -0.7 }
             choice("Not sure — learn as I go", selected: temperaturePreference == nil) { temperaturePreference = nil }
         }
     }
@@ -88,7 +89,7 @@ struct OnboardingView: View {
             HStack(spacing: 12) {
                 if (1...3).contains(page) { Button("Skip") { move(1) }.font(.headline).frame(maxWidth: .infinity, minHeight: 54).vaneLiquidGlassButton() }
                 Button(page == pageCount - 1 ? "See my weather" : page == 0 ? "Meet Sense" : "Continue") { page == pageCount - 1 ? finish() : move(1) }
-                    .font(.headline).frame(maxWidth: .infinity, minHeight: 54).vaneLiquidGlassButton(prominent: true)
+                    .font(.headline).lineLimit(2).minimumScaleFactor(0.8).multilineTextAlignment(.center).frame(maxWidth: .infinity, minHeight: 54).vaneLiquidGlassButton(prominent: true)
             }
         }.padding(20)
     }
@@ -127,7 +128,7 @@ private struct OnboardingPage<Content: View>: View {
                     VStack(spacing: 12) { content }
                     Spacer(minLength: 20)
                 }
-                .frame(width: max(geometry.size.width - 44, 0), alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 22)
             }
             .frame(width: geometry.size.width)

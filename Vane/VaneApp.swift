@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import OSLog
 
 @main
 struct VaneApp: App {
@@ -14,20 +15,16 @@ struct VaneApp: App {
     private let storageRecoveryMessage: String?
 
     init() {
-        let schema = Schema([
-            WeatherProfile.self,
-            WeatherCheckIn.self,
-            SavedPlace.self,
-        ])
+        let schema = Schema(versionedSchema: VaneSchemaV1.self)
         let persistent = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            modelContainer = try ModelContainer(for: schema, configurations: [persistent])
+            modelContainer = try ModelContainer(for: schema, migrationPlan: VaneMigrationPlan.self, configurations: [persistent])
             storageRecoveryMessage = nil
         } catch {
-            let originalError = error.localizedDescription
+            Logger(subsystem: "studio.codearc.Vane", category: "Storage").error("Persistent store failed to open: \(error.localizedDescription, privacy: .public)")
             do {
-                modelContainer = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
-                storageRecoveryMessage = "Vane could not open its saved private data (\(originalError)). A temporary session is running so you can still view weather. Reinstall or contact Vane before relying on new check-ins."
+                modelContainer = try ModelContainer(for: schema, migrationPlan: VaneMigrationPlan.self, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
+                storageRecoveryMessage = "Vane could not open its saved private data. A temporary session is available for viewing weather, but new check-ins will not be kept after the app closes. Contact Vane support before making changes to the app or its data."
             } catch {
                 preconditionFailure("Vane could not create even a temporary data store: \(error)")
             }

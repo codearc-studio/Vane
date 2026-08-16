@@ -43,6 +43,8 @@ struct ContentView: View {
 }
 
 struct MainTabView: View {
+    @Query(sort: \WeatherCheckIn.createdAt, order: .reverse) private var checkIns: [WeatherCheckIn]
+    @Query private var profiles: [WeatherProfile]
     @Bindable var weatherStore: WeatherStore
     @Bindable var notificationManager: NotificationManager
     @State private var selectedTab = ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "sense" || ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "settings" ? 1 : 0
@@ -52,15 +54,29 @@ struct MainTabView: View {
             NavigationStack { WeatherHomeView(store: weatherStore) }
                 .tabItem { Label("Weather", systemImage: "cloud.sun.fill") }
                 .tag(0)
-            NavigationStack { YouView(store: weatherStore, notifications: notificationManager) }
-                .tabItem { Label("You", systemImage: "person.crop.circle.fill") }
+            NavigationStack {
+                if ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "settings" {
+                    SettingsView(store: weatherStore, notifications: notificationManager)
+                } else if ProcessInfo.processInfo.environment["VANE_SCREENSHOT_TAB"] == "sense" {
+                    SenseView(snapshot: weatherStore.snapshot)
+                } else {
+                    YouView(store: weatherStore, notifications: notificationManager)
+                }
+            }
+                .tabItem {
+                    Label("Sense", image: "VaneTab")
+                }
                 .tag(1)
         }
         .tint(VaneTheme.blue)
         .task { await weatherStore.start() }
         .task { await notificationManager.refreshStatus() }
         .onChange(of: weatherStore.snapshot.updatedAt) { _, _ in
-            Task { await notificationManager.schedule(snapshot: weatherStore.snapshot) }
+            let samples = checkIns.compactMap { checkIn -> GuidanceSample? in
+                guard let response = checkIn.feelResponse else { return nil }
+                return GuidanceSample(date: checkIn.createdAt, apparentTemperature: checkIn.apparentTemperature, humidity: checkIn.humidity, windSpeed: checkIn.windSpeed, response: response, contexts: checkIn.contexts, cloudCover: checkIn.cloudCover ?? 0.5, isTravel: checkIn.isTravel)
+            }
+            Task { await notificationManager.schedule(snapshot: weatherStore.snapshot, samples: samples, checkInFrequency: profiles.first?.checkInFrequency ?? .recommended) }
         }
     }
 }
