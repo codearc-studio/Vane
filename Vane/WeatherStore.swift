@@ -1,4 +1,5 @@
 import CoreLocation
+import BackgroundTasks
 import Foundation
 import MapKit
 import Observation
@@ -44,6 +45,9 @@ struct WeatherRequestGate {
 @MainActor
 @Observable
 final class WeatherStore: NSObject, CLLocationManagerDelegate {
+    static let shared = WeatherStore()
+    nonisolated static let backgroundRefreshIdentifier = "com.codearc.vane.weather-refresh"
+
     private enum Key {
         static let sourceID = "weather.selectedSourceID"
         static let sourceName = "weather.selectedSourceName"
@@ -51,12 +55,15 @@ final class WeatherStore: NSObject, CLLocationManagerDelegate {
         static let longitude = "weather.selectedLongitude"
         static let timeZone = "weather.selectedTimeZone"
         static let isTravel = "weather.selectedIsTravel"
+        static let lastCurrentName = "weather.lastCurrentName"
+        static let lastCurrentLatitude = "weather.lastCurrentLatitude"
+        static let lastCurrentLongitude = "weather.lastCurrentLongitude"
+        static let lastCurrentTimeZone = "weather.lastCurrentTimeZone"
     }
 
     private let locationManager = CLLocationManager()
     private let defaults = UserDefaults.standard
     private let weatherProvider: any WeatherProviding
-    private let airQualityProvider: any AirQualityProviding
     private var hasStarted = false
     private var requestGate = WeatherRequestGate()
     private let isScreenshotMode = ProcessInfo.processInfo.environment["VANE_SCREENSHOT_MODE"] == "1"
@@ -77,18 +84,21 @@ final class WeatherStore: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    override convenience init() { self.init(weatherProvider: AppleWeatherProvider(), airQualityProvider: OpenMeteoAirQualityProvider()) }
+    override convenience init() { self.init(weatherProvider: AppleWeatherProvider()) }
 
-    init(weatherProvider: any WeatherProviding, airQualityProvider: any AirQualityProviding = OpenMeteoAirQualityProvider()) {
+    init(weatherProvider: any WeatherProviding) {
         self.weatherProvider = weatherProvider
-        self.airQualityProvider = airQualityProvider
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 50
         authorizationStatus = locationManager.authorizationStatus
         if isScreenshotMode {
-            snapshot = .screenshotPreview
+            if ProcessInfo.processInfo.environment["VANE_SCREENSHOT_ALERTS"] == "1" {
+                snapshot = .alertScreenshotPreview
+            } else {
+                snapshot = ProcessInfo.processInfo.environment["VANE_SCREENSHOT_NIGHT"] == "1" ? .nightScreenshotPreview : .screenshotPreview
+            }
             displayState = .live
         }
     }
@@ -96,7 +106,10 @@ final class WeatherStore: NSObject, CLLocationManagerDelegate {
     func start() async {
         guard !hasStarted else { return }
         hasStarted = true
-        guard !isScreenshotMode else { return }
+        if isScreenshotMode {
+            await WeatherLiveActivityManager.shared.synchronize(snapshot: snapshot)
+            return
+        }
         await loadAttribution()
         authorizationStatus = locationManager.authorizationStatus
         let restoredID = defaults.string(forKey: Key.sourceID) ?? "current"
@@ -148,6 +161,47 @@ final class WeatherStore: NSObject, CLLocationManagerDelegate {
         } else {
             resetSelection()
         }
+    }
+
+    func refreshIfNeeded(maxAge: TimeInterval = 10 * 60) async {
+        guard !isScreenshotMode, !isLoading else { return }
+        guard snapshot.isPlaceholder || Date().timeIntervalSince(snapshot.updatedAt) >= maxAge else { return }
+        await refreshSelectedSource()
+    }
+
+    func performBackgroundRefresh() async {
+        guard !isScreenshotMode else { return }
+        if !hasStarted {
+            hasStarted = true
+            authorizationStatus = locationManager.authorizationStatus
+            selectedSourceID = defaults.string(forKey: Key.sourceID) ?? "current"
+            isUsingCurrentLocation = selectedSourceID == "current"
+        }
+        if isUsingCurrentLocation,
+           defaults.object(forKey: Key.lastCurrentLatitude) != nil,
+           defaults.object(forKey: Key.lastCurrentLongitude) != nil {
+            let location = CLLocation(
+                latitude: defaults.double(forKey: Key.lastCurrentLatitude),
+                longitude: defaults.double(forKey: Key.lastCurrentLongitude)
+            )
+            await loadWeather(
+                for: location,
+                preferredName: defaults.string(forKey: Key.lastCurrentName),
+                sourceID: "current",
+                preferredTimeZoneIdentifier: defaults.string(forKey: Key.lastCurrentTimeZone),
+                isTravel: false
+            )
+        } else {
+            await refreshSelectedSource()
+        }
+        await NotificationManager().scheduleOfficialAlerts(snapshot: snapshot)
+        Self.scheduleBackgroundRefresh()
+    }
+
+    nonisolated static func scheduleBackgroundRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: backgroundRefreshIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
+        try? BGTaskScheduler.shared.submit(request)
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -202,6 +256,7 @@ final class WeatherStore: NSObject, CLLocationManagerDelegate {
         persistCurrentSource()
         snapshot = .empty
         displayState = authorizationStatus == .denied || authorizationStatus == .restricted ? .permissionUnavailable : .needsLocation
+        Task { await WeatherLiveActivityManager.shared.endAll() }
     }
 
     func isSelected(_ place: SavedPlace) -> Bool { selectedSourceID == "place:\(place.id.uuidString)" }
@@ -283,11 +338,19 @@ final class WeatherStore: NSObject, CLLocationManagerDelegate {
                 )
             }
             let alerts = (weather.weatherAlerts ?? []).map {
-                WeatherAlertSnapshot(id: $0.detailsURL.absoluteString, summary: $0.summary, severity: $0.severity.description.capitalized, region: $0.region, source: $0.source, detailsURL: $0.detailsURL)
+                WeatherAlertSnapshot(
+                    id: $0.detailsURL.absoluteString,
+                    summary: $0.summary,
+                    severity: $0.severity.description.capitalized,
+                    region: $0.region,
+                    source: $0.source,
+                    detailsURL: $0.detailsURL,
+                    issuedAt: $0.metadata.date,
+                    expiresAt: $0.metadata.expirationDate
+                )
             }
             let current = weather.currentWeather
             guard requestGate.accepts(token: requestID, sourceID: sourceID), sourceID == selectedSourceID else { return }
-            let previousAirQuality = snapshot.sourceID == sourceID ? snapshot.airQuality : nil
             snapshot = ForecastSnapshot(
                 locationName: name,
                 sourceID: sourceID,
@@ -304,12 +367,19 @@ final class WeatherStore: NSObject, CLLocationManagerDelegate {
                 isTravelLocation: isTravel,
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude,
-                locationAccuracy: sourceID == "current" && location.horizontalAccuracy >= 0 ? location.horizontalAccuracy : nil,
-                airQuality: previousAirQuality
+                locationAccuracy: sourceID == "current" && location.horizontalAccuracy >= 0 ? location.horizontalAccuracy : nil
             )
             if sourceID != "current" { defaults.set(timeZoneIdentifier, forKey: Key.timeZone) }
+            if sourceID == "current" {
+                defaults.set(name, forKey: Key.lastCurrentName)
+                defaults.set(location.coordinate.latitude, forKey: Key.lastCurrentLatitude)
+                defaults.set(location.coordinate.longitude, forKey: Key.lastCurrentLongitude)
+                defaults.set(timeZoneIdentifier, forKey: Key.lastCurrentTimeZone)
+            }
             displayState = .live
-            Task { await updateAirQuality(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude, sourceID: sourceID, requestID: requestID) }
+            WidgetBridge.publish(snapshot: snapshot)
+            await WeatherLiveActivityManager.shared.synchronize(snapshot: snapshot)
+            Self.scheduleBackgroundRefresh()
             if attribution == nil { await loadAttribution() }
         } catch {
             guard requestGate.accepts(token: requestID, sourceID: sourceID), sourceID == selectedSourceID else { return }
@@ -321,13 +391,6 @@ final class WeatherStore: NSObject, CLLocationManagerDelegate {
                 displayState = .stale(offline ? "You’re offline — showing weather updated at \(updated)." : "Refresh failed — showing weather updated at \(updated).")
             }
         }
-    }
-
-    private func updateAirQuality(latitude: Double, longitude: Double, sourceID: String, requestID: UUID) async {
-        guard let airQuality = try? await airQualityProvider.currentAirQuality(latitude: latitude, longitude: longitude),
-              requestGate.accepts(token: requestID, sourceID: sourceID),
-              selectedSourceID == sourceID else { return }
-        snapshot = snapshot.replacingAirQuality(airQuality)
     }
 
     private func loadAttribution() async {

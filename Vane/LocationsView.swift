@@ -1,18 +1,18 @@
 import CoreLocation
 import Observation
-import MapKit
+@preconcurrency import MapKit
 import SwiftData
 import SwiftUI
 
 struct LocationsView: View {
-    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.fahrenheit.rawValue
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.localizedDefault.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor(\SavedPlace.sortOrder), SortDescriptor(\SavedPlace.createdAt)]) private var places: [SavedPlace]
     @Bindable var store: WeatherStore
     @State private var searchModel = PlaceSearchModel()
-    @State private var query = ""
+    @State private var query = ProcessInfo.processInfo.environment["VANE_SCREENSHOT_LOCATION_QUERY"] ?? ""
     @State private var appeared = false
 
     private var hasQuery: Bool {
@@ -45,10 +45,11 @@ struct LocationsView: View {
                                     HStack(spacing: 8) {
                                         Button { select(place) } label: {
                                             LocationRow(
-                                                symbol: "mappin.and.ellipse",
+                                                symbol: place.isHome ? "house.fill" : "mappin.and.ellipse",
                                                 title: place.name,
                                                 subtitle: savedPlaceSubtitle(place),
-                                                selected: isSelected(place)
+                                                selected: isSelected(place),
+                                                badge: place.isHome ? "Home" : nil
                                             )
                                             .padding(.horizontal, 17)
                                             .frame(maxWidth: .infinity, minHeight: 64)
@@ -260,9 +261,9 @@ struct LocationsView: View {
     private func savedPlaceSubtitle(_ place: SavedPlace) -> String {
         if store.isSelected(place), !store.snapshot.isPlaceholder {
             let formatting = WeatherFormatting(temperature: TemperatureUnitPreference(rawValue: temperatureUnitRaw) ?? .fahrenheit, timeZone: store.snapshot.timeZone)
-            return "\(formatting.degrees(store.snapshot.current.temperature)) · \(store.snapshot.current.condition) · \(place.isHome ? "Home · " : "")\(place.region)"
+            return "\(formatting.degrees(store.snapshot.current.temperature)) · \(store.snapshot.current.condition) · \(place.region)"
         }
-        return place.isHome ? "Home · \(place.region)" : place.region
+        return place.region
     }
 }
 
@@ -271,6 +272,7 @@ private struct LocationRow: View {
     let title: String
     let subtitle: String
     let selected: Bool
+    var badge: String? = nil
 
     var body: some View {
         HStack(spacing: 13) {
@@ -287,6 +289,14 @@ private struct LocationRow: View {
                     .lineLimit(1)
             }
             Spacer()
+            if badge != nil {
+                Image(systemName: "house.fill")
+                    .font(.caption.bold())
+                    .frame(width: 30, height: 30)
+                    .foregroundStyle(selected ? .white : VaneTheme.blue)
+                    .background((selected ? Color.white : VaneTheme.blue).opacity(0.14), in: Circle())
+                    .accessibilityLabel("Home place")
+            }
             if selected {
                 Image(systemName: "checkmark")
                     .font(.subheadline.bold())
@@ -313,6 +323,7 @@ struct PlaceSearchResult: Identifiable, Sendable {
 final class PlaceSearchModel {
     var results: [PlaceSearchResult] = []
     var isSearching = false
+    private var searchID = UUID()
 
     func search(_ query: String) async {
         let cleaned = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -320,14 +331,32 @@ final class PlaceSearchModel {
             results = []
             return
         }
+        let currentSearchID = UUID()
+        searchID = currentSearchID
         isSearching = true
-        defer { isSearching = false }
+        defer { if searchID == currentSearchID { isSearching = false } }
         do {
-            let request = MKLocalSearch.Request()
-            request.naturalLanguageQuery = cleaned
-            request.resultTypes = [.address]
-            let items = try await MKLocalSearch(request: request).start().mapItems
-            guard !Task.isCancelled else { return }
+            let completions = try await PlaceCompletionSearch().completions(for: cleaned)
+            var items: [MKMapItem] = []
+            for completion in completions.prefix(18) {
+                guard !Task.isCancelled, searchID == currentSearchID else { return }
+                let request = MKLocalSearch.Request()
+                request.naturalLanguageQuery = [completion.title, completion.subtitle]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: ", ")
+                request.resultTypes = [.address]
+                if let response = try? await MKLocalSearch(request: request).start() {
+                    items.append(contentsOf: response.mapItems.prefix(2))
+                }
+                if items.count >= 18 { break }
+            }
+            if items.isEmpty {
+                let request = MKLocalSearch.Request()
+                request.naturalLanguageQuery = cleaned
+                request.resultTypes = [.address]
+                items = try await MKLocalSearch(request: request).start().mapItems
+            }
+            guard !Task.isCancelled, searchID == currentSearchID else { return }
             var seen = Set<String>()
             results = items.compactMap { item -> PlaceSearchResult? in
                 let name = item.addressRepresentations?.cityName ?? item.name ?? cleaned
@@ -335,7 +364,7 @@ final class PlaceSearchModel {
                     ?? item.address?.shortAddress
                     ?? item.addressRepresentations?.regionName
                     ?? ""
-                let key = "\(name.lowercased())|\(region.lowercased())|\(item.location.coordinate.latitude.formatted(.number.precision(.fractionLength(2))))|\(item.location.coordinate.longitude.formatted(.number.precision(.fractionLength(2))))"
+                let key = "\(name.lowercased())|\(region.lowercased())|\(item.location.coordinate.latitude.formatted(.number.precision(.fractionLength(3))))|\(item.location.coordinate.longitude.formatted(.number.precision(.fractionLength(3))))"
                 guard seen.insert(key).inserted else { return nil }
                 return PlaceSearchResult(
                     name: name,
@@ -351,4 +380,52 @@ final class PlaceSearchModel {
             results = []
         }
     }
+}
+
+@MainActor
+private final class PlaceCompletionSearch: NSObject, MKLocalSearchCompleterDelegate {
+    private let completer = MKLocalSearchCompleter()
+    private var continuation: CheckedContinuation<[PlaceCompletionDescriptor], any Error>?
+
+    override init() {
+        super.init()
+        completer.delegate = self
+        completer.resultTypes = [.address]
+        completer.region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+            span: MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)
+        )
+    }
+
+    func completions(for query: String) async throws -> [PlaceCompletionDescriptor] {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                self.continuation = continuation
+                completer.queryFragment = query
+            }
+        } onCancel: {
+            Task { @MainActor in self.cancel() }
+        }
+    }
+
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        continuation?.resume(returning: completer.results.map { PlaceCompletionDescriptor(title: $0.title, subtitle: $0.subtitle) })
+        continuation = nil
+    }
+
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: any Error) {
+        continuation?.resume(throwing: error)
+        continuation = nil
+    }
+
+    private func cancel() {
+        completer.cancel()
+        continuation?.resume(throwing: CancellationError())
+        continuation = nil
+    }
+}
+
+private struct PlaceCompletionDescriptor: Sendable {
+    let title: String
+    let subtitle: String
 }

@@ -80,6 +80,39 @@ final class GuidanceEngineTests: XCTestCase {
         XCTAssertEqual(summary.windSummary, "Still learning")
     }
 
+    func testExplicitDampnessContextCanBeLearned() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let samples = [
+            GuidanceSample(date: now, apparentTemperature: 58, humidity: 0.82, windSpeed: 8, response: .cold, contexts: [.dampness], precipitationChance: 0.85),
+            GuidanceSample(date: now, apparentTemperature: 61, humidity: 0.78, windSpeed: 7, response: .chilly, contexts: [.dampness], precipitationChance: 0.72)
+        ]
+        let summary = GuidanceEngine.profileSummary(temperaturePreference: 0, windSensitivity: 0.5, humiditySensitivity: 0.5, samples: samples, now: now)
+        XCTAssertTrue(summary.dampnessSummary.contains("land cooler"))
+    }
+
+    func testSenseFamiliarityUsesSurroundingWeatherSignals() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let samples = (0..<5).map { _ in
+            GuidanceSample(
+                date: now,
+                apparentTemperature: 72,
+                humidity: 0.72,
+                windSpeed: 12,
+                response: .comfortable,
+                cloudCover: 0.9,
+                dewPoint: 66,
+                windGust: 24,
+                pressure: 992,
+                visibility: 3,
+                precipitationChance: 0.82,
+                isDaylight: false
+            )
+        }
+        let matching = GuidanceEngine.predictionFamiliarity(temperature: 72, humidity: 0.72, windSpeed: 12, cloudCover: 0.9, dewPoint: 66, windGust: 24, pressure: 992, visibility: 3, precipitationChance: 0.82, isDaylight: false, samples: samples, now: now)
+        let differentSystem = GuidanceEngine.predictionFamiliarity(temperature: 72, humidity: 0.72, windSpeed: 12, cloudCover: 0.9, dewPoint: 40, windGust: 4, pressure: 1032, visibility: 12, precipitationChance: 0.02, isDaylight: true, samples: samples, now: now)
+        XCTAssertGreaterThan(matching, differentSystem)
+    }
+
     func testOfficialAlertOverridesPersonalComfort() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let url = URL(string: "https://example.com/alert")!
@@ -128,9 +161,20 @@ final class GuidanceEngineTests: XCTestCase {
 
     func testSevereNotificationHasPriority() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let alert = WeatherAlertSnapshot(id: "alert", summary: "Warning", severity: "Severe", region: nil, source: "Official", detailsURL: URL(string: "https://example.com")!)
+        let alert = WeatherAlertSnapshot(id: "alert", summary: "Warning", severity: "Severe", region: nil, source: "Official", detailsURL: URL(string: "https://example.com")!, issuedAt: now, expiresAt: now.addingTimeInterval(3_600))
         let events = NotificationPlanner.plan(snapshot: forecast(apparent: 72, rain: 0.8, now: now, alerts: [alert]), now: now, rainEnabled: true, preparationEnabled: true, severeEnabled: true)
         XCTAssertTrue(events.first?.id.contains("severe") == true)
+        XCTAssertEqual(events.first?.destinationURL?.absoluteString, "vane://weather/alerts")
+        XCTAssertEqual(events.first?.expirationDate, alert.expiresAt)
+        XCTAssertTrue(events.first?.isTimeSensitive == true)
+    }
+
+    func testOfficialAlertsSortByActiveStateThenSeverity() {
+        let now = Date()
+        let minor = WeatherAlertSnapshot(id: "minor", summary: "Minor", severity: "Minor", region: nil, source: "Official", detailsURL: URL(string: "https://example.com/minor")!, expiresAt: now.addingTimeInterval(3_600))
+        let extreme = WeatherAlertSnapshot(id: "extreme", summary: "Extreme", severity: "Extreme", region: nil, source: "Official", detailsURL: URL(string: "https://example.com/extreme")!, expiresAt: now.addingTimeInterval(7_200))
+        let expired = WeatherAlertSnapshot(id: "expired", summary: "Expired", severity: "Extreme", region: nil, source: "Official", detailsURL: URL(string: "https://example.com/expired")!, expiresAt: now.addingTimeInterval(-60))
+        XCTAssertEqual([minor, expired, extreme].sorted(by: WeatherAlertSnapshot.priorityOrder).map(\.id), ["extreme", "minor", "expired"])
     }
 
     func testTemperaturePreferenceDirectionMatchesOnboardingLanguage() {
@@ -276,13 +320,6 @@ final class GuidanceEngineTests: XCTestCase {
         XCTAssertTrue(guidance.detail.contains("may be inaccurate"))
     }
 
-    func testAQICategoriesUseUSIndexRanges() {
-        let good = AirQualitySnapshot(index: 42, pm25: 0, pm10: 0, ozone: 0, nitrogenDioxide: 0, updatedAt: .now)
-        let sensitive = AirQualitySnapshot(index: 125, pm25: 0, pm10: 0, ozone: 0, nitrogenDioxide: 0, updatedAt: .now)
-        XCTAssertEqual(good.category, "Good")
-        XCTAssertEqual(sensitive.category, "Unhealthy for sensitive groups")
-    }
-
     func testWeatherRequestGateRejectsOlderAndWrongSourceResults() {
         var gate = WeatherRequestGate()
         let first = gate.begin(sourceID: "place:a")
@@ -293,7 +330,7 @@ final class GuidanceEngineTests: XCTestCase {
     }
 
     func testDelayedProviderCannotOverwriteNewerSelectedPlaceFailure() async {
-        let store = WeatherStore(weatherProvider: DelayedFailingWeatherProvider(), airQualityProvider: FailingAirQualityProvider())
+        let store = WeatherStore(weatherProvider: DelayedFailingWeatherProvider())
         store.snapshot = .sample
         let slow = SavedPlace(name: "Slow", region: "Test", latitude: 1, longitude: 1, timeZoneIdentifier: "GMT")
         let fast = SavedPlace(name: "Fast", region: "Test", latitude: 2, longitude: 2, timeZoneIdentifier: "GMT")
@@ -315,6 +352,69 @@ final class GuidanceEngineTests: XCTestCase {
         try container.mainContext.save()
         DataCoordinator.prepare(context: container.mainContext)
         XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<WeatherProfile>()), 1)
+    }
+
+    func testPersistentStoreUsesTheSharedPrivateCloudKitContainer() {
+        let schema = Schema(versionedSchema: VaneSchemaV1.self)
+        let configuration = VaneCloudKit.cloudBackedConfiguration(schema: schema)
+
+        XCTAssertEqual(configuration.cloudKitContainerIdentifier, "iCloud.com.codearc.vane")
+        XCTAssertNil(configuration.groupAppContainerIdentifier)
+        XCTAssertFalse(configuration.isStoredInMemoryOnly)
+    }
+
+    func testWidgetSnapshotRoundTripsWithoutLosingForecastData() throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .millisecondsSince1970
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .millisecondsSince1970
+
+        let original = VaneWidgetSnapshot.sample
+        let encoded = try encoder.encode(original)
+        let decoded = try decoder.decode(VaneWidgetSnapshot.self, from: encoded)
+        let originalJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? NSDictionary)
+        let decodedJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(decoded)) as? NSDictionary)
+
+        XCTAssertEqual(decodedJSON, originalJSON)
+        XCTAssertEqual(decoded.hourly.count, 12)
+        XCTAssertEqual(decoded.daily.count, 10)
+        XCTAssertEqual(decoded.guidanceHeadline, "Comfortable for you")
+        XCTAssertEqual(decoded.guidanceIsPersonalized, true)
+        XCTAssertEqual(decoded.guidanceIsEstimate, false)
+        XCTAssertEqual(decoded.guidanceCalibrationLabel, "Well calibrated")
+        XCTAssertNil(decoded.guidanceActionText)
+    }
+
+    func testWidgetFormattingUsesSavedUnitsAndLocationTimeZone() {
+        let snapshot = VaneWidgetSnapshot.sample
+        XCTAssertEqual(snapshot.temperatureText(72), "72°")
+        XCTAssertEqual(snapshot.windText(7), "7 mph")
+        XCTAssertEqual(snapshot.timeZone.identifier, "America/New_York")
+        XCTAssertEqual(snapshot.hours(after: snapshot.updatedAt, limit: 4).count, 4)
+    }
+
+    func testWidgetMetricIdentityIsArchivableByWidgetKit() throws {
+        let encoded = try JSONEncoder().encode(VaneWidgetMetric.allCases)
+        let decoded = try JSONDecoder().decode([VaneWidgetMetric].self, from: encoded)
+        XCTAssertEqual(decoded, VaneWidgetMetric.allCases)
+    }
+
+    func testEveryWidgetDeepLinkRoutesToWeatherContent() throws {
+        let router = VaneRouter()
+        let routes: [(String, VaneDestination)] = [
+            ("vane://weather", .weather),
+            ("vane://weather/alerts", .alerts),
+            ("vane://weather/week", .forecast),
+            ("vane://weather/conditions", .conditions),
+            ("vane://weather/sun", .sun),
+            ("vane://sense", .sense)
+        ]
+
+        for (value, expected) in routes {
+            router.open(try XCTUnwrap(URL(string: value)))
+            XCTAssertEqual(router.destination, expected)
+        }
+        XCTAssertEqual(router.sequence, routes.count)
     }
 
     private func variedComfortSamples(now: Date) -> [GuidanceSample] {
@@ -342,11 +442,5 @@ private actor DelayedFailingWeatherProvider: WeatherProviding {
         }
         try await Task.sleep(for: .milliseconds(30))
         throw URLError(.cannotConnectToHost)
-    }
-}
-
-private struct FailingAirQualityProvider: AirQualityProviding {
-    func currentAirQuality(latitude: Double, longitude: Double) async throws -> AirQualitySnapshot {
-        throw URLError(.resourceUnavailable)
     }
 }

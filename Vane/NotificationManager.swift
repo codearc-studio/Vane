@@ -8,6 +8,24 @@ struct PlannedNotification: Identifiable, Equatable, Sendable {
     let title: String
     let body: String
     let date: Date
+    let destinationURL: URL?
+    let expirationDate: Date?
+    let isTimeSensitive: Bool
+
+    init(id: String, title: String, body: String, date: Date, destinationURL: URL? = nil, expirationDate: Date? = nil, isTimeSensitive: Bool = false) {
+        self.id = id
+        self.title = title
+        self.body = body
+        self.date = date
+        self.destinationURL = destinationURL
+        self.expirationDate = expirationDate
+        self.isTimeSensitive = isTimeSensitive
+    }
+}
+
+enum VaneNotificationRoute {
+    static let userInfoKey = "vaneDestinationURL"
+    static let officialAlertCategory = "VANE_OFFICIAL_WEATHER_ALERT"
 }
 
 enum NotificationPlanner {
@@ -32,9 +50,16 @@ enum NotificationPlanner {
         let place = snapshot.sourceID == "current" ? "" : " in \(snapshot.locationName)"
         var events: [PlannedNotification] = []
 
-        // This remains off by default and hidden in Settings until Vane has a dependable push pipeline.
-        if severeEnabled, let alert = highestPriorityAlert(snapshot.alerts) {
-            events.append(.init(id: "vane.severe.\(stableIdentifier(alert.id))", title: "Official weather alert\(place)", body: "\(alert.severity): \(alert.summary)", date: now.addingTimeInterval(60)))
+        if severeEnabled, let alert = highestPriorityAlert(snapshot.alerts, now: now) {
+            events.append(.init(
+                id: "vane.severe.\(stableIdentifier(alert.id))",
+                title: "Official weather alert\(place)",
+                body: "\(alert.severityLevel.title): \(alert.summary)",
+                date: now.addingTimeInterval(5),
+                destinationURL: URL(string: "vane://weather/alerts"),
+                expirationDate: alert.expiresAt,
+                isTimeSensitive: alert.severityLevel.priority >= WeatherAlertSeverity.severe.priority
+            ))
         }
 
         if let start = precipitationStart(snapshot: snapshot, now: now), (start.kind == .snow || start.kind == .mixed ? snowEnabled : rainEnabled) {
@@ -91,9 +116,11 @@ enum NotificationPlanner {
         return nil
     }
 
-    private static func highestPriorityAlert(_ alerts: [WeatherAlertSnapshot]) -> WeatherAlertSnapshot? {
-        let rank = ["extreme": 4, "severe": 3, "moderate": 2, "minor": 1]
-        return alerts.max { rank[$0.severity.lowercased(), default: 0] < rank[$1.severity.lowercased(), default: 0] }
+    private static func highestPriorityAlert(_ alerts: [WeatherAlertSnapshot], now: Date) -> WeatherAlertSnapshot? {
+        alerts
+            .filter { $0.expiresAt.map { $0 > now } ?? true }
+            .sorted(by: WeatherAlertSnapshot.priorityOrder)
+            .first
     }
 
     private static func stableIdentifier(_ value: String) -> String {
@@ -111,7 +138,8 @@ final class NotificationManager {
     var rainEnabled: Bool { get { defaults.bool(forKey: "rainNotificationsEnabled") } set { defaults.set(newValue, forKey: "rainNotificationsEnabled") } }
     var preparationEnabled: Bool { get { defaults.bool(forKey: "preparationNotificationsEnabled") } set { defaults.set(newValue, forKey: "preparationNotificationsEnabled") } }
     var snowEnabled: Bool { get { defaults.object(forKey: "snowNotificationsEnabled") == nil || defaults.bool(forKey: "snowNotificationsEnabled") } set { defaults.set(newValue, forKey: "snowNotificationsEnabled") } }
-    var severeEnabled: Bool { get { false } set { defaults.set(false, forKey: "severeNotificationsEnabled") } }
+    var officialAlertsEnabled: Bool { get { defaults.bool(forKey: "severeNotificationsEnabled") } set { defaults.set(newValue, forKey: "severeNotificationsEnabled") } }
+    var severeEnabled: Bool { get { officialAlertsEnabled } set { officialAlertsEnabled = newValue } }
     var uvEnabled: Bool { get { defaults.object(forKey: "uvNotificationsEnabled") == nil || defaults.bool(forKey: "uvNotificationsEnabled") } set { defaults.set(newValue, forKey: "uvNotificationsEnabled") } }
     var morningEnabled: Bool { get { defaults.bool(forKey: "morningNotificationsEnabled") } set { defaults.set(newValue, forKey: "morningNotificationsEnabled") } }
     var tomorrowEnabled: Bool { get { defaults.bool(forKey: "tomorrowNotificationsEnabled") } set { defaults.set(newValue, forKey: "tomorrowNotificationsEnabled") } }
@@ -144,26 +172,63 @@ final class NotificationManager {
     func schedule(snapshot: ForecastSnapshot, samples: [GuidanceSample] = [], checkInFrequency: CheckInFrequency = .recommended) async {
         let center = UNUserNotificationCenter.current()
         let old = await center.pendingNotificationRequests().filter { $0.identifier.hasPrefix("vane.") }
-        center.removePendingNotificationRequests(withIdentifiers: old.map(\.identifier))
+        let removable = old.filter { !$0.identifier.hasPrefix("vane.severe.") || !officialAlertsEnabled }
+        center.removePendingNotificationRequests(withIdentifiers: removable.map(\.identifier))
         await refreshStatus()
         guard authorizationStatus == .authorized || authorizationStatus == .provisional else { pendingCount = 0; return }
         let events = NotificationPlanner.plan(snapshot: snapshot, rainEnabled: rainEnabled, preparationEnabled: preparationEnabled, snowEnabled: snowEnabled, severeEnabled: severeEnabled, uvEnabled: uvEnabled, morningEnabled: morningEnabled, tomorrowEnabled: tomorrowEnabled, smartCheckInEnabled: smartCheckInEnabled, samples: samples, checkInFrequency: checkInFrequency)
-        for event in events {
-            let content = UNMutableNotificationContent(); content.title = event.title; content.body = event.body; content.sound = .default
-            let request = UNNotificationRequest(identifier: event.id, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, event.date.timeIntervalSinceNow), repeats: false))
-            try? await center.add(request)
-        }
+        await add(events, to: center)
         await refreshStatus()
+    }
+
+    func scheduleOfficialAlerts(snapshot: ForecastSnapshot) async {
+        guard officialAlertsEnabled else { return }
+        await refreshStatus()
+        guard authorizationStatus == .authorized || authorizationStatus == .provisional else { return }
+        let events = NotificationPlanner.plan(snapshot: snapshot, rainEnabled: false, preparationEnabled: false, snowEnabled: false, severeEnabled: true, uvEnabled: false)
+            .filter { $0.id.hasPrefix("vane.severe.") }
+        await add(events, to: UNUserNotificationCenter.current())
+        await refreshStatus()
+    }
+
+    private func add(_ events: [PlannedNotification], to center: UNUserNotificationCenter) async {
+        let pendingIDs = Set(await center.pendingNotificationRequests().map(\.identifier))
+        let now = Date()
+        var announced = defaults.dictionary(forKey: "officialAlertNotificationExpirations") as? [String: Double] ?? [:]
+        announced = announced.filter { $0.value > now.timeIntervalSince1970 }
+
+        for event in events where !pendingIDs.contains(event.id) {
+            if event.id.hasPrefix("vane.severe."), announced[event.id] != nil { continue }
+            let content = UNMutableNotificationContent()
+            content.title = event.title
+            content.body = event.body
+            content.sound = .default
+            if let destinationURL = event.destinationURL {
+                content.userInfo[VaneNotificationRoute.userInfoKey] = destinationURL.absoluteString
+                content.categoryIdentifier = VaneNotificationRoute.officialAlertCategory
+            }
+            if event.isTimeSensitive { content.interruptionLevel = .timeSensitive }
+            let request = UNNotificationRequest(identifier: event.id, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, event.date.timeIntervalSinceNow), repeats: false))
+            do {
+                try await center.add(request)
+                if event.id.hasPrefix("vane.severe.") {
+                    announced[event.id] = (event.expirationDate ?? now.addingTimeInterval(12 * 3_600)).timeIntervalSince1970
+                }
+            } catch { }
+        }
+        defaults.set(announced, forKey: "officialAlertNotificationExpirations")
     }
 
     func cancelAllVaneNotifications() async {
         let center = UNUserNotificationCenter.current()
         let identifiers = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("vane.") }
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        defaults.removeObject(forKey: "officialAlertNotificationExpirations")
         await refreshStatus()
     }
 
     func resetPreferences() {
         ["rainNotificationsEnabled", "preparationNotificationsEnabled", "snowNotificationsEnabled", "severeNotificationsEnabled", "uvNotificationsEnabled", "morningNotificationsEnabled", "tomorrowNotificationsEnabled", "smartCheckInNotificationsEnabled"].forEach(defaults.removeObject(forKey:))
+        defaults.removeObject(forKey: "officialAlertNotificationExpirations")
     }
 }

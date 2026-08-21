@@ -39,7 +39,7 @@
           "image-name" : "Vane.png",
           "name" : "Vane",
           "position" : {
-            "scale" : 0.66,
+            "scale" : 0.74,
             "translation-in-points" : [
               5.279999999999973,
               0.9900000000000091

@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct YouView: View {
-    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.fahrenheit.rawValue
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.localizedDefault.rawValue
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Query(sort: \WeatherCheckIn.createdAt, order: .reverse) private var checkIns: [WeatherCheckIn]
     @Query private var profiles: [WeatherProfile]
@@ -15,10 +15,7 @@ struct YouView: View {
 
     private var profile: WeatherProfile? { profiles.first }
     private var samples: [GuidanceSample] {
-        checkIns.compactMap {
-            guard let response = $0.feelResponse else { return nil }
-            return GuidanceSample(date: $0.createdAt, apparentTemperature: profile?.usesFeelsLikeTemperature == false ? $0.temperature : $0.apparentTemperature, humidity: $0.humidity, windSpeed: $0.windSpeed, response: response, contexts: $0.contexts, cloudCover: $0.cloudCover ?? 0.5, isTravel: $0.isTravel)
-        }
+        checkIns.compactMap { $0.guidanceSample(usesFeelsLikeTemperature: profile?.usesFeelsLikeTemperature ?? true) }
     }
     private var summary: SenseProfileSummary { GuidanceEngine.profileSummary(temperaturePreference: profile?.temperaturePreference ?? 0, windSensitivity: profile?.windSensitivity ?? 0.5, humiditySensitivity: profile?.humiditySensitivity ?? 0.5, samples: samples) }
     private var formatting: WeatherFormatting { WeatherFormatting(temperature: TemperatureUnitPreference(rawValue: temperatureUnitRaw) ?? .fahrenheit, timeZone: store.snapshot.timeZone) }
@@ -29,7 +26,10 @@ struct YouView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 6) {
-                        SectionKicker(title: "Sense")
+                        HStack(spacing: 10) {
+                            VaneMark(size: 42)
+                            Text("Sense").font(.title2.bold())
+                        }
                         Text("Your weather profile")
                             .font(.largeTitle.bold())
                         Text("Sense learns from optional check-ins and stays honest about what it has not seen yet.")
@@ -59,6 +59,7 @@ struct YouView: View {
                             ProfileLine(title: "Humidity sensitivity", value: summary.humiditySummary)
                             ProfileLine(title: "Wind sensitivity", value: summary.windSummary)
                             ProfileLine(title: "Sun sensitivity", value: summary.sunSummary)
+                            ProfileLine(title: "Rain & dampness", value: summary.dampnessSummary)
                         }.padding(20)
                     }
 

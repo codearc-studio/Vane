@@ -8,7 +8,36 @@ struct GuidanceSample: Sendable {
     let response: FeelResponse
     var contexts: Set<FeelContext> = []
     var cloudCover: Double = 0.5
+    var dewPoint: Double?
+    var windGust: Double?
+    var pressure: Double?
+    var visibility: Double?
+    var precipitationChance: Double?
+    var isDaylight: Bool?
     var isTravel = false
+}
+
+extension WeatherCheckIn {
+    func guidanceSample(usesFeelsLikeTemperature: Bool = true) -> GuidanceSample? {
+        guard let response = feelResponse else { return nil }
+        let fingerprint = conditionFingerprint
+        return GuidanceSample(
+            date: createdAt,
+            apparentTemperature: usesFeelsLikeTemperature ? apparentTemperature : temperature,
+            humidity: humidity,
+            windSpeed: windSpeed,
+            response: response,
+            contexts: contexts,
+            cloudCover: cloudCover ?? 0.5,
+            dewPoint: dewPoint,
+            windGust: windGust,
+            pressure: fingerprint.pressure.map(Double.init),
+            visibility: fingerprint.visibility.map(Double.init),
+            precipitationChance: precipitationChance,
+            isDaylight: fingerprint.isDaylight,
+            isTravel: isTravel
+        )
+    }
 }
 
 enum CalibrationStatus: String, Sendable {
@@ -29,6 +58,7 @@ struct SenseProfileSummary: Sendable {
     let windSummary: String
     let humiditySummary: String
     let sunSummary: String
+    let dampnessSummary: String
     let relevantSampleCount: Int
     let effectiveSampleCount: Double
 
@@ -56,10 +86,7 @@ struct PersonalGuidance {
             windSensitivity: profile?.windSensitivity ?? 0.5,
             humiditySensitivity: profile?.humiditySensitivity ?? 0.5,
             usesFeelsLikeTemperature: profile?.usesFeelsLikeTemperature ?? true,
-            samples: checkIns.compactMap { checkIn in
-                guard let response = checkIn.feelResponse else { return nil }
-                return GuidanceSample(date: checkIn.createdAt, apparentTemperature: profile?.usesFeelsLikeTemperature == false ? checkIn.temperature : checkIn.apparentTemperature, humidity: checkIn.humidity, windSpeed: checkIn.windSpeed, response: response, contexts: checkIn.contexts, cloudCover: checkIn.cloudCover ?? 0.5, isTravel: checkIn.isTravel)
-            },
+            samples: checkIns.compactMap { $0.guidanceSample(usesFeelsLikeTemperature: profile?.usesFeelsLikeTemperature ?? true) },
             now: now
         )
     }
@@ -81,7 +108,7 @@ enum GuidanceEngine {
         let baseline = 71 + temperaturePreference * 5
         let valid = samples.filter { $0.date <= now.addingTimeInterval(300) }
         let relevant = seasonallyRelevant(samples: valid, now: now)
-        let context = learnedContextResiduals(samples: valid, windSensitivity: windSensitivity)
+        let context = learnedContextResiduals(samples: valid, windSensitivity: windSensitivity, humiditySensitivity: humiditySensitivity)
         let weighted = valid.map { sample -> (Double, Double) in
             let normalized = transformedTemperature(sample, context: context)
             let travelWeight = sample.isTravel ? 0.45 : 1
@@ -110,7 +137,7 @@ enum GuidanceEngine {
             detail = "Your earlier moments still help, but a few current-season check-ins will make this feel current again."
         } else if effectiveCount >= 8 && evidence >= 0.62 {
             status = .wellCalibrated
-            detail = "Sense recognizes a useful variety of temperatures, wind and humidity."
+            detail = "Sense recognizes a useful variety of temperatures and surrounding weather signals."
         } else {
             status = .learning
             detail = "Different conditions teach Sense more than repeating nearly identical weather."
@@ -127,6 +154,7 @@ enum GuidanceEngine {
             windSummary: contextSummary(.wind, samples: relevant, coldText: "Wind often makes conditions land cooler", warmText: "Wind often changes how warmth lands"),
             humiditySummary: contextSummary(.humidity, samples: relevant, coldText: "Humidity sometimes makes cool weather feel raw", warmText: "Humidity often amplifies warmth"),
             sunSummary: contextSummary(.sun, samples: relevant, coldText: "Sun can soften cooler conditions", warmText: "Direct sun often adds noticeable warmth"),
+            dampnessSummary: contextSummary(.dampness, samples: relevant, coldText: "Rain and dampness often make conditions land cooler", warmText: "Rain and dampness can make warmth feel heavier"),
             relevantSampleCount: relevant.count,
             effectiveSampleCount: effectiveCount
         )
@@ -136,10 +164,10 @@ enum GuidanceEngine {
         let summary = profileSummary(temperaturePreference: temperaturePreference, windSensitivity: windSensitivity, humiditySensitivity: humiditySensitivity, samples: samples, now: now)
         let current = snapshot.current
         let observed = Double(usesFeelsLikeTemperature ? current.apparentTemperature : current.temperature)
-        let context = learnedContextResiduals(samples: samples, windSensitivity: windSensitivity)
-        let transformed = transformedTemperature(observed: observed, humidity: current.humidity, windSpeed: Double(current.windSpeed), cloudCover: current.cloudCover, context: context)
+        let context = learnedContextResiduals(samples: samples, windSensitivity: windSensitivity, humiditySensitivity: humiditySensitivity)
+        let transformed = transformedTemperature(observed: observed, humidity: current.humidity, windSpeed: Double(current.windSpeed), cloudCover: current.cloudCover, dewPoint: Double(current.dewPoint), windGust: Double(current.windGust), precipitationChance: current.precipitationChance, context: context)
         let difference = transformed - summary.comfortCenter
-        let localFamiliarity = predictionFamiliarity(temperature: observed, humidity: current.humidity, windSpeed: Double(current.windSpeed), cloudCover: current.cloudCover, samples: samples, now: now)
+        let localFamiliarity = predictionFamiliarity(temperature: observed, humidity: current.humidity, windSpeed: Double(current.windSpeed), cloudCover: current.cloudCover, dewPoint: Double(current.dewPoint), windGust: Double(current.windGust), pressure: Double(current.pressure), visibility: Double(current.visibility), precipitationChance: current.precipitationChance, isDaylight: current.isDaylight, samples: samples, now: now)
         let rainSoon = snapshot.hourly.prefix(6).map(\.precipitationChance).max() ?? current.precipitationChance
         let safetyAction: PersonalGuidance.Action?
         if !snapshot.alerts.isEmpty {
@@ -214,6 +242,10 @@ enum GuidanceEngine {
                 && abs(sample.apparentTemperature - Double(current.apparentTemperature)) < 4
                 && abs(sample.humidity - current.humidity) < 0.12
                 && abs(sample.windSpeed - Double(current.windSpeed)) < 5
+                && sample.pressure.map { abs($0 - Double(current.pressure)) < 18 } ?? true
+                && sample.visibility.map { abs($0 - Double(current.visibility)) < 7 } ?? true
+                && sample.precipitationChance.map { abs($0 - current.precipitationChance) < 0.3 } ?? true
+                && sample.isDaylight.map { $0 == current.isDaylight } ?? true
         }
         let summary = profileSummary(temperaturePreference: 0, windSensitivity: 0.5, humiditySensitivity: 0.5, samples: samples, now: now)
         return !similar || summary.status == .needsRefreshing
@@ -226,9 +258,9 @@ enum GuidanceEngine {
     static func bestFitHour(in hours: [HourlyConditions], temperaturePreference: Double, windSensitivity: Double, humiditySensitivity: Double, usesFeelsLikeTemperature: Bool = true, samples: [GuidanceSample], now: Date = .now, calendar: Calendar = .current) -> HourlyConditions? {
         let summary = profileSummary(temperaturePreference: temperaturePreference, windSensitivity: windSensitivity, humiditySensitivity: humiditySensitivity, samples: samples, now: now)
         guard summary.canPersonalize else { return nil }
-        let context = learnedContextResiduals(samples: samples, windSensitivity: windSensitivity)
+        let context = learnedContextResiduals(samples: samples, windSensitivity: windSensitivity, humiditySensitivity: humiditySensitivity)
         let familiar = daytimeHours(in: hours, now: now, calendar: calendar).filter {
-            predictionFamiliarity(temperature: Double(usesFeelsLikeTemperature ? $0.apparentTemperature : $0.temperature), humidity: $0.humidity, windSpeed: Double($0.windSpeed), cloudCover: $0.cloudCover, samples: samples, now: now) >= predictionFamiliarityThreshold
+            predictionFamiliarity(temperature: Double(usesFeelsLikeTemperature ? $0.apparentTemperature : $0.temperature), humidity: $0.humidity, windSpeed: Double($0.windSpeed), cloudCover: $0.cloudCover, dewPoint: Double($0.dewPoint), windGust: Double($0.windGust), precipitationChance: $0.precipitationChance, isDaylight: $0.isDaylight, samples: samples, now: now) >= predictionFamiliarityThreshold
         }
         return familiar.min { fitScore($0, center: summary.comfortCenter, usesFeelsLikeTemperature: usesFeelsLikeTemperature, context: context) < fitScore($1, center: summary.comfortCenter, usesFeelsLikeTemperature: usesFeelsLikeTemperature, context: context) }
     }
@@ -264,6 +296,7 @@ enum GuidanceEngine {
             case .humidity: observedSecondary = sample.humidity; scale = 0.18
             case .wind: observedSecondary = sample.windSpeed; scale = 7
             case .sun: observedSecondary = 1 - sample.cloudCover; scale = 0.3
+            case .dampness: observedSecondary = sample.precipitationChance ?? (sample.contexts.contains(.dampness) ? 1 : 0); scale = 0.32
             default: observedSecondary = 0; scale = 1
             }
             let secondaryDistance = (observedSecondary - secondary) / scale
@@ -272,13 +305,22 @@ enum GuidanceEngine {
         return min(1, density / 1.7)
     }
 
-    static func predictionFamiliarity(temperature: Double, humidity: Double, windSpeed: Double, cloudCover: Double, samples: [GuidanceSample], now: Date = .now) -> Double {
+    static func predictionFamiliarity(temperature: Double, humidity: Double, windSpeed: Double, cloudCover: Double, dewPoint: Double? = nil, windGust: Double? = nil, pressure: Double? = nil, visibility: Double? = nil, precipitationChance: Double? = nil, isDaylight: Bool? = nil, samples: [GuidanceSample], now: Date = .now) -> Double {
         let density = samples.reduce(0.0) { total, sample in
             let temperatureDistance = (sample.apparentTemperature - temperature) / 9
             let humidityDistance = (sample.humidity - humidity) / 0.2
             let windDistance = (sample.windSpeed - windSpeed) / 8
             let sunDistance = (sample.cloudCover - cloudCover) / 0.4
-            let squared = temperatureDistance * temperatureDistance + humidityDistance * humidityDistance + windDistance * windDistance + sunDistance * sunDistance
+            var squared = temperatureDistance * temperatureDistance
+                + humidityDistance * humidityDistance * 0.24
+                + windDistance * windDistance * 0.20
+                + sunDistance * sunDistance * 0.18
+            if let dewPoint, let sampleDewPoint = sample.dewPoint { squared += pow((sampleDewPoint - dewPoint) / 12, 2) * 0.14 }
+            if let windGust, let sampleWindGust = sample.windGust { squared += pow((sampleWindGust - windGust) / 12, 2) * 0.10 }
+            if let pressure, let samplePressure = sample.pressure { squared += pow((samplePressure - pressure) / 20, 2) * 0.10 }
+            if let visibility, let sampleVisibility = sample.visibility { squared += pow((sampleVisibility - visibility) / 8, 2) * 0.08 }
+            if let precipitationChance, let samplePrecipitation = sample.precipitationChance { squared += pow((samplePrecipitation - precipitationChance) / 0.4, 2) * 0.14 }
+            if let isDaylight, let sampleDaylight = sample.isDaylight, sampleDaylight != isDaylight { squared += 0.22 }
             let weight = evidenceWeight(for: sample.date, now: now) * (sample.isTravel ? 0.45 : 1) * (isSeasonallyRelevant(sample.date, now: now) ? 1 : 0.18)
             return total + exp(-squared) * weight
         }
@@ -291,7 +333,7 @@ enum GuidanceEngine {
 
     private static func fitScore(_ hour: HourlyConditions, center: Double, usesFeelsLikeTemperature: Bool, context: ContextResiduals) -> Double {
         let observed = Double(usesFeelsLikeTemperature ? hour.apparentTemperature : hour.temperature)
-        let adjusted = transformedTemperature(observed: observed, humidity: hour.humidity, windSpeed: Double(hour.windSpeed), cloudCover: hour.cloudCover, context: context)
+        let adjusted = transformedTemperature(observed: observed, humidity: hour.humidity, windSpeed: Double(hour.windSpeed), cloudCover: hour.cloudCover, dewPoint: Double(hour.dewPoint), windGust: Double(hour.windGust), precipitationChance: hour.precipitationChance, context: context)
         return abs(adjusted - center) + hour.precipitationChance * 3.5
     }
 
@@ -299,15 +341,19 @@ enum GuidanceEngine {
         let wind: Double
         let humidity: Double
         let sun: Double
+        let dampness: Double
     }
 
-    private static func learnedContextResiduals(samples: [GuidanceSample], windSensitivity: Double) -> ContextResiduals {
+    private static func learnedContextResiduals(samples: [GuidanceSample], windSensitivity: Double, humiditySensitivity: Double) -> ContextResiduals {
         let learnedWind = learnedResidual(for: .wind, samples: samples)
         let explicitWindPrior = -max(0, windSensitivity - 0.5) * 1.5
+        let learnedHumidity = learnedResidual(for: .humidity, samples: samples)
+        let explicitHumidityPrior = max(0, humiditySensitivity - 0.5) * 1.5
         return ContextResiduals(
             wind: learnedWind == 0 ? explicitWindPrior : learnedWind,
-            humidity: learnedResidual(for: .humidity, samples: samples),
-            sun: learnedResidual(for: .sun, samples: samples)
+            humidity: learnedHumidity == 0 ? explicitHumidityPrior : learnedHumidity,
+            sun: learnedResidual(for: .sun, samples: samples),
+            dampness: learnedResidual(for: .dampness, samples: samples)
         )
     }
 
@@ -322,14 +368,19 @@ enum GuidanceEngine {
     }
 
     private static func transformedTemperature(_ sample: GuidanceSample, context: ContextResiduals) -> Double {
-        transformedTemperature(observed: sample.apparentTemperature, humidity: sample.humidity, windSpeed: sample.windSpeed, cloudCover: sample.cloudCover, context: context)
+        transformedTemperature(observed: sample.apparentTemperature, humidity: sample.humidity, windSpeed: sample.windSpeed, cloudCover: sample.cloudCover, dewPoint: sample.dewPoint, windGust: sample.windGust, precipitationChance: sample.precipitationChance, context: context)
     }
 
-    private static func transformedTemperature(observed: Double, humidity: Double, windSpeed: Double, cloudCover: Double, context: ContextResiduals) -> Double {
-        let windExposure = max(0, min(1, (windSpeed - 6) / 16))
-        let humidityExposure = max(0, min(1, (humidity - 0.5) / 0.35))
+    private static func transformedTemperature(observed: Double, humidity: Double, windSpeed: Double, cloudCover: Double, dewPoint: Double? = nil, windGust: Double? = nil, precipitationChance: Double? = nil, context: ContextResiduals) -> Double {
+        let effectiveWind = max(windSpeed, (windGust ?? windSpeed) * 0.65)
+        let windExposure = max(0, min(1, (effectiveWind - 6) / 16))
+        let humidityExposure = max(
+            max(0, min(1, (humidity - 0.5) / 0.35)),
+            dewPoint.map { max(0, min(1, ($0 - 54) / 18)) } ?? 0
+        )
         let sunExposure = max(0, min(1, (1 - cloudCover - 0.25) / 0.65))
-        return observed + context.wind * windExposure + context.humidity * humidityExposure + context.sun * sunExposure
+        let dampnessExposure = max(0, min(1, precipitationChance ?? 0))
+        return observed + context.wind * windExposure + context.humidity * humidityExposure + context.sun * sunExposure + context.dampness * dampnessExposure
     }
 
     private static func isSeasonallyRelevant(_ date: Date, now: Date) -> Bool {

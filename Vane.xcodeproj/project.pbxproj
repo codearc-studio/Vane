@@ -6,6 +6,14 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C200000C000000000000000C /* VaneWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C20000010000000000000001 /* VaneWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C20000100000000000000010 /* Vane/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C200000F000000000000000F /* Vane/Assets.xcassets */; };
+		D300000C000000000000000C /* VaneWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = D30000010000000000000001 /* VaneWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D30000120000000000000012 /* Vane/Vane.icon in Resources */ = {isa = PBXBuildFile; fileRef = D30000110000000000000011 /* Vane/Vane.icon */; };
+		E400000C000000000000000C /* VaneWatchWidgets.appex in Embed Watch Extensions */ = {isa = PBXBuildFile; fileRef = E40000010000000000000001 /* VaneWatchWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		B100000C000000000000000C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -14,12 +22,87 @@
 			remoteGlobalIDString = A49C43E4302E2A3B00654455;
 			remoteInfo = Vane;
 		};
+		C200000D000000000000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A49C43DD302E2A3B00654455 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C20000070000000000000007;
+			remoteInfo = VaneWidgets;
+		};
+		D300000D000000000000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A49C43DD302E2A3B00654455 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D30000070000000000000007;
+			remoteInfo = VaneWatch;
+		};
+		E400000D000000000000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A49C43DD302E2A3B00654455 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E40000070000000000000007;
+			remoteInfo = VaneWatchWidgets;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C200000B000000000000000B /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				C200000C000000000000000C /* VaneWidgets.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+		};
+		D300000B000000000000000B /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolder = Product;
+			files = (
+				D300000C000000000000000C /* VaneWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+		};
+		E400000B000000000000000B /* Embed Watch Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				E400000C000000000000000C /* VaneWatchWidgets.appex in Embed Watch Extensions */,
+			);
+			name = "Embed Watch Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A49C43E5302E2A3B00654455 /* Vane.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Vane.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000010000000000000001 /* VaneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VaneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C20000010000000000000001 /* VaneWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VaneWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C200000F000000000000000F /* Vane/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Vane/Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		D30000010000000000000001 /* VaneWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VaneWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D30000110000000000000011 /* Vane/Vane.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = Vane/Vane.icon; sourceTree = SOURCE_ROOT; };
+		E40000010000000000000001 /* VaneWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VaneWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		D30000130000000000000013 /* Exceptions for "VaneShared" folder in "VaneWatch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				VaneWeatherActivityAttributes.swift,
+				VaneWidgetViews.swift,
+			);
+			target = D30000070000000000000007 /* VaneWatch */;
+		};
+		E40000130000000000000013 /* Exceptions for "VaneShared" folder in "VaneWatchWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				VaneWeatherActivityAttributes.swift,
+				VaneWidgetViews.swift,
+			);
+			target = E40000070000000000000007 /* VaneWatchWidgets */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A49C43E7302E2A3B00654455 /* Vane */ = {
@@ -30,6 +113,30 @@
 		B10000020000000000000002 /* VaneTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = VaneTests;
+			sourceTree = "<group>";
+		};
+		C20000020000000000000002 /* VaneWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VaneWidgets;
+			sourceTree = "<group>";
+		};
+		C20000030000000000000003 /* VaneShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D30000130000000000000013 /* Exceptions for "VaneShared" folder in "VaneWatch" target */,
+				E40000130000000000000013 /* Exceptions for "VaneShared" folder in "VaneWatchWidgets" target */,
+			);
+			path = VaneShared;
+			sourceTree = "<group>";
+		};
+		D30000020000000000000002 /* VaneWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VaneWatch;
+			sourceTree = "<group>";
+		};
+		E40000020000000000000002 /* VaneWatchWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VaneWatchWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -45,6 +152,21 @@
 			files = (
 			);
 		};
+		C20000040000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		D30000040000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		E40000040000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -52,8 +174,14 @@
 			isa = PBXGroup;
 			children = (
 				A49C43E7302E2A3B00654455 /* Vane */,
+				C20000030000000000000003 /* VaneShared */,
+				C20000020000000000000002 /* VaneWidgets */,
+				D30000020000000000000002 /* VaneWatch */,
+				E40000020000000000000002 /* VaneWatchWidgets */,
 				B10000020000000000000002 /* VaneTests */,
+				D30000110000000000000011 /* Vane/Vane.icon */,
 				A49C43E6302E2A3B00654455 /* Products */,
+				A4E6BAAF30379E9B008AD4F9 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -61,9 +189,20 @@
 			isa = PBXGroup;
 			children = (
 				A49C43E5302E2A3B00654455 /* Vane.app */,
+				C20000010000000000000001 /* VaneWidgets.appex */,
+				D30000010000000000000001 /* VaneWatch.app */,
+				E40000010000000000000001 /* VaneWatchWidgets.appex */,
 				B10000010000000000000001 /* VaneTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A4E6BAAF30379E9B008AD4F9 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				C200000F000000000000000F /* Vane/Assets.xcassets */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -76,11 +215,18 @@
 				A49C43E1302E2A3B00654455 /* Sources */,
 				A49C43E2302E2A3B00654455 /* Frameworks */,
 				A49C43E3302E2A3B00654455 /* Resources */,
+				C200000B000000000000000B /* Embed App Extensions */,
+				D300000B000000000000000B /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
+			dependencies = (
+				C200000E000000000000000E /* PBXTargetDependency */,
+				D300000E000000000000000E /* PBXTargetDependency */,
+			);
 			fileSystemSynchronizedGroups = (
 				A49C43E7302E2A3B00654455 /* Vane */,
+				C20000030000000000000003 /* VaneShared */,
 			);
 			name = Vane;
 			productName = Vane;
@@ -108,6 +254,67 @@
 			productReference = B10000010000000000000001 /* VaneTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		C20000070000000000000007 /* VaneWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C200000A000000000000000A /* Build configuration list for PBXNativeTarget "VaneWidgets" */;
+			buildPhases = (
+				C20000050000000000000005 /* Sources */,
+				C20000040000000000000004 /* Frameworks */,
+				C20000060000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				C20000020000000000000002 /* VaneWidgets */,
+				C20000030000000000000003 /* VaneShared */,
+			);
+			name = VaneWidgets;
+			productName = VaneWidgets;
+			productReference = C20000010000000000000001 /* VaneWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		D30000070000000000000007 /* VaneWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D300000A000000000000000A /* Build configuration list for PBXNativeTarget "VaneWatch" */;
+			buildPhases = (
+				D30000050000000000000005 /* Sources */,
+				D30000040000000000000004 /* Frameworks */,
+				D30000060000000000000006 /* Resources */,
+				E400000B000000000000000B /* Embed Watch Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E400000E000000000000000E /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C20000030000000000000003 /* VaneShared */,
+				D30000020000000000000002 /* VaneWatch */,
+			);
+			name = VaneWatch;
+			productName = VaneWatch;
+			productReference = D30000010000000000000001 /* VaneWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E40000070000000000000007 /* VaneWatchWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E400000A000000000000000A /* Build configuration list for PBXNativeTarget "VaneWatchWidgets" */;
+			buildPhases = (
+				E40000050000000000000005 /* Sources */,
+				E40000040000000000000004 /* Frameworks */,
+				E40000060000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				C20000030000000000000003 /* VaneShared */,
+				E40000020000000000000002 /* VaneWatchWidgets */,
+			);
+			name = VaneWatchWidgets;
+			productName = VaneWatchWidgets;
+			productReference = E40000010000000000000001 /* VaneWatchWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -120,10 +327,27 @@
 				TargetAttributes = {
 					A49C43E4302E2A3B00654455 = {
 						CreatedOnToolsVersion = 27.0;
+						SystemCapabilities = {
+							com.apple.Push = {
+								enabled = 1;
+							};
+							com.apple.iCloud = {
+								enabled = 1;
+							};
+						};
 					};
 					B10000040000000000000004 = {
 						CreatedOnToolsVersion = 27.0;
 						TestTargetID = A49C43E4302E2A3B00654455;
+					};
+					C20000070000000000000007 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					D30000070000000000000007 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					E40000070000000000000007 = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -142,6 +366,9 @@
 			projectRoot = "";
 			targets = (
 				A49C43E4302E2A3B00654455 /* Vane */,
+				C20000070000000000000007 /* VaneWidgets */,
+				D30000070000000000000007 /* VaneWatch */,
+				E40000070000000000000007 /* VaneWatchWidgets */,
 				B10000040000000000000004 /* VaneTests */,
 			);
 		};
@@ -154,6 +381,23 @@
 			);
 		};
 		B10000050000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		C20000060000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				C20000100000000000000010 /* Vane/Assets.xcassets in Resources */,
+			);
+		};
+		D30000060000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				D30000120000000000000012 /* Vane/Vane.icon in Resources */,
+			);
+		};
+		E40000060000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -171,6 +415,21 @@
 			files = (
 			);
 		};
+		C20000050000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		D30000050000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		E40000050000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -178,6 +437,21 @@
 			isa = PBXTargetDependency;
 			target = A49C43E4302E2A3B00654455 /* Vane */;
 			targetProxy = B100000C000000000000000C /* PBXContainerItemProxy */;
+		};
+		C200000E000000000000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C20000070000000000000007 /* VaneWidgets */;
+			targetProxy = C200000D000000000000000D /* PBXContainerItemProxy */;
+		};
+		D300000E000000000000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D30000070000000000000007 /* VaneWatch */;
+			targetProxy = D300000D000000000000000D /* PBXContainerItemProxy */;
+		};
+		E400000E000000000000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E40000070000000000000007 /* VaneWatchWidgets */;
+			targetProxy = E400000D000000000000000D /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -310,15 +584,18 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Vane/Vane.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 5KFXU6Q8VM;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Vane-Info.plist";
+				INFOPLIST_KEY_BGTaskSchedulerPermittedIdentifiers = "com.codearc.vane.weather-refresh";
 				INFOPLIST_KEY_CFBundleDisplayName = Vane;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Vane uses your location to show the weather where you are.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = fetch;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
@@ -341,7 +618,8 @@
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VANE_ICLOUD_CONTAINER_ENVIRONMENT = Development;
 			};
 			name = Debug;
 		};
@@ -352,15 +630,18 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Vane/Vane.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 5KFXU6Q8VM;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Vane-Info.plist";
+				INFOPLIST_KEY_BGTaskSchedulerPermittedIdentifiers = "com.codearc.vane.weather-refresh";
 				INFOPLIST_KEY_CFBundleDisplayName = Vane;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Vane uses your location to show the weather where you are.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = fetch;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
@@ -383,7 +664,8 @@
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VANE_ICLOUD_CONTAINER_ENVIRONMENT = Production;
 			};
 			name = Release;
 		};
@@ -429,6 +711,218 @@
 			};
 			name = Release;
 		};
+		C20000080000000000000008 /* Debug configuration for PBXNativeTarget "VaneWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VaneWidgets/VaneWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 5KFXU6Q8VM;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "VaneWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Vane;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codearc.vane.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C20000090000000000000009 /* Release configuration for PBXNativeTarget "VaneWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VaneWidgets/VaneWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 5KFXU6Q8VM;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "VaneWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Vane;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codearc.vane.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		D30000080000000000000008 /* Debug configuration for PBXNativeTarget "VaneWatch" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = Vane;
+				CODE_SIGN_ENTITLEMENTS = VaneWatch/VaneWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 5KFXU6Q8VM;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Vane;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.codearc.vane;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codearc.vane.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		D30000090000000000000009 /* Release configuration for PBXNativeTarget "VaneWatch" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = Vane;
+				CODE_SIGN_ENTITLEMENTS = VaneWatch/VaneWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 5KFXU6Q8VM;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Vane;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.codearc.vane;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codearc.vane.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		E40000080000000000000008 /* Debug configuration for PBXNativeTarget "VaneWatchWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VaneWatchWidgets/VaneWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 5KFXU6Q8VM;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "VaneWatchWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Vane;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codearc.vane.watchkitapp.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		E40000090000000000000009 /* Release configuration for PBXNativeTarget "VaneWatchWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VaneWatchWidgets/VaneWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 5KFXU6Q8VM;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "VaneWatchWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Vane;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codearc.vane.watchkitapp.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -453,6 +947,30 @@
 			buildConfigurations = (
 				B10000070000000000000007 /* Debug configuration for PBXNativeTarget "VaneTests" */,
 				B10000080000000000000008 /* Release configuration for PBXNativeTarget "VaneTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		C200000A000000000000000A /* Build configuration list for PBXNativeTarget "VaneWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C20000080000000000000008 /* Debug configuration for PBXNativeTarget "VaneWidgets" */,
+				C20000090000000000000009 /* Release configuration for PBXNativeTarget "VaneWidgets" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		D300000A000000000000000A /* Build configuration list for PBXNativeTarget "VaneWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D30000080000000000000008 /* Debug configuration for PBXNativeTarget "VaneWatch" */,
+				D30000090000000000000009 /* Release configuration for PBXNativeTarget "VaneWatch" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		E400000A000000000000000A /* Build configuration list for PBXNativeTarget "VaneWatchWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E40000080000000000000008 /* Debug configuration for PBXNativeTarget "VaneWatchWidgets" */,
+				E40000090000000000000009 /* Release configuration for PBXNativeTarget "VaneWatchWidgets" */,
 			);
 			defaultConfigurationName = Release;
 		};

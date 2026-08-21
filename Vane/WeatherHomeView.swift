@@ -6,16 +6,20 @@ struct WeatherHomeView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Query(sort: \WeatherCheckIn.createdAt, order: .reverse) private var checkIns: [WeatherCheckIn]
     @Query private var profiles: [WeatherProfile]
-    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.fahrenheit.rawValue
-    @AppStorage("windUnit") private var windUnitRaw = WindUnitPreference.milesPerHour.rawValue
-    @AppStorage("pressureUnit") private var pressureUnitRaw = PressureUnitPreference.hectopascals.rawValue
-    @AppStorage("precipitationUnit") private var precipitationUnitRaw = PrecipitationUnitPreference.inches.rawValue
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.localizedDefault.rawValue
+    @AppStorage("windUnit") private var windUnitRaw = WindUnitPreference.localizedDefault.rawValue
+    @AppStorage("pressureUnit") private var pressureUnitRaw = PressureUnitPreference.localizedDefault.rawValue
+    @AppStorage("precipitationUnit") private var precipitationUnitRaw = PrecipitationUnitPreference.localizedDefault.rawValue
     @Bindable var store: WeatherStore
+    @Bindable var router: VaneRouter
     @State private var showLocations = false
     @State private var showCheckIn = false
     @State private var checkInPresenceWarning: CheckInPresence?
     @State private var selectedDay: DailyConditions?
     @State private var selectedDetail: WeatherDetailKind?
+    @State private var showAlerts = false
+    @State private var showDayIdeas = false
+    @State private var sharePayload: WeatherSharePayload?
     @State private var scrollSection: String?
 
     private var snapshot: ForecastSnapshot { store.snapshot }
@@ -25,14 +29,22 @@ struct WeatherHomeView: View {
     private var pressureUnit: PressureUnitPreference { PressureUnitPreference(rawValue: pressureUnitRaw) ?? .hectopascals }
     private var formatting: WeatherFormatting { WeatherFormatting(temperature: temperatureUnit, wind: windUnit, pressure: pressureUnit, precipitation: PrecipitationUnitPreference(rawValue: precipitationUnitRaw) ?? .inches, timeZone: snapshot.timeZone) }
     private var samples: [GuidanceSample] {
-        checkIns.compactMap {
-            guard let response = $0.feelResponse else { return nil }
-            return GuidanceSample(date: $0.createdAt, apparentTemperature: profile?.usesFeelsLikeTemperature == false ? $0.temperature : $0.apparentTemperature, humidity: $0.humidity, windSpeed: $0.windSpeed, response: response, contexts: $0.contexts, cloudCover: $0.cloudCover ?? 0.5, isTravel: $0.isTravel)
-        }
+        checkIns.compactMap { $0.guidanceSample(usesFeelsLikeTemperature: profile?.usesFeelsLikeTemperature ?? true) }
     }
     private var summary: SenseProfileSummary { GuidanceEngine.profileSummary(temperaturePreference: profile?.temperaturePreference ?? 0, windSensitivity: profile?.windSensitivity ?? 0.5, humiditySensitivity: profile?.humiditySensitivity ?? 0.5, samples: samples) }
     private var guidance: PersonalGuidance { PersonalGuidance(snapshot: snapshot, profile: profile, checkIns: checkIns) }
     private var shouldPrompt: Bool { GuidanceEngine.shouldPrompt(snapshot: snapshot, samples: samples, frequency: profile?.checkInFrequency ?? .recommended) }
+    private var orderedAlerts: [WeatherAlertSnapshot] { snapshot.alerts.sorted(by: WeatherAlertSnapshot.priorityOrder) }
+    private var dayExperience: DayWeatherExperience {
+        WeatherFeatureEngine.makeExperience(
+            snapshot: snapshot,
+            temperaturePreference: profile?.temperaturePreference ?? 0,
+            windSensitivity: profile?.windSensitivity ?? 0.5,
+            humiditySensitivity: profile?.humiditySensitivity ?? 0.5,
+            usesFeelsLikeTemperature: profile?.usesFeelsLikeTemperature ?? true,
+            samples: samples
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -43,12 +55,31 @@ struct WeatherHomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showLocations) { LocationsView(store: store) }
         .sheet(isPresented: $showCheckIn) { CheckInView(snapshot: snapshot) }
+        .sheet(item: $sharePayload) { payload in WeatherActivitySheet(payload: payload) }
         .confirmationDialog(checkInWarningTitle, isPresented: Binding(get: { checkInPresenceWarning != nil }, set: { if !$0 { checkInPresenceWarning = nil } }), titleVisibility: .visible) {
             Button("I’m here — continue") { checkInPresenceWarning = nil; showCheckIn = true }
             Button("Cancel", role: .cancel) { checkInPresenceWarning = nil }
         } message: { Text(checkInWarningMessage) }
         .navigationDestination(item: $selectedDay) { day in DayDetailView(day: day, snapshot: snapshot, profile: profile, samples: samples) }
         .navigationDestination(item: $selectedDetail) { detail in WeatherDetailView(kind: detail, snapshot: snapshot, formatting: formatting) }
+        .navigationDestination(isPresented: $showAlerts) {
+            WeatherAlertsView(alerts: snapshot.alerts, locationName: snapshot.locationName, updatedAt: snapshot.updatedAt, formatting: formatting)
+        }
+        .navigationDestination(isPresented: $showDayIdeas) {
+            DayWeatherExperienceView(snapshot: snapshot, experience: dayExperience, formatting: formatting, onShare: makeShareCard)
+        }
+        .task(id: router.sequence) { handleDeepLink(router.destination) }
+    }
+
+    private func handleDeepLink(_ destination: VaneDestination) {
+        switch destination {
+        case .weather: scrollSection = nil
+        case .alerts: showAlerts = true
+        case .forecast: scrollSection = "week"
+        case .conditions: scrollSection = "conditions"
+        case .sun: selectedDetail = .sun
+        case .sense: break
+        }
     }
 
     private var forecast: some View {
@@ -59,6 +90,8 @@ struct WeatherHomeView: View {
                 weatherHero
                 stateNotice
                 personalRead
+                TodayWeatherCard(experience: dayExperience, formatting: formatting, onOpen: { showDayIdeas = true }, onShare: makeShareCard)
+                    .id("day-ideas")
                 if shouldPrompt { checkInPrompt }
                 if bestFitHour != nil { bestFitToday }
                 hourlyForecast
@@ -68,7 +101,7 @@ struct WeatherHomeView: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 8)
-            .padding(.bottom, dynamicTypeSize.isAccessibilitySize ? 210 : 110)
+            .padding(.bottom, dynamicTypeSize.isAccessibilitySize ? 150 : 44)
             .containerRelativeFrame(.horizontal)
         }
         .scrollIndicators(.hidden)
@@ -78,6 +111,8 @@ struct WeatherHomeView: View {
             if ProcessInfo.processInfo.environment["VANE_SCREENSHOT_CHECKIN"] == "1" { try? await Task.sleep(for: .milliseconds(250)); showCheckIn = true }
             if ProcessInfo.processInfo.environment["VANE_SCREENSHOT_LOCATIONS"] == "1" { try? await Task.sleep(for: .milliseconds(250)); showLocations = true }
             if ProcessInfo.processInfo.environment["VANE_SCREENSHOT_DAY_DETAIL"] == "1" { try? await Task.sleep(for: .milliseconds(250)); selectedDay = snapshot.daily.dropFirst().first ?? snapshot.daily.first }
+            if ProcessInfo.processInfo.environment["VANE_SCREENSHOT_ALERT_CENTER"] == "1" { try? await Task.sleep(for: .milliseconds(250)); showAlerts = true }
+            if ProcessInfo.processInfo.environment["VANE_SCREENSHOT_DAY_IDEAS"] == "1" { try? await Task.sleep(for: .milliseconds(250)); showDayIdeas = true }
             if let detail = ProcessInfo.processInfo.environment["VANE_SCREENSHOT_DETAIL"].flatMap(WeatherDetailKind.init(rawValue:)) { try? await Task.sleep(for: .milliseconds(250)); selectedDetail = detail }
             guard let target = ProcessInfo.processInfo.environment["VANE_SCREENSHOT_SECTION"] else { return }
             try? await Task.sleep(for: .milliseconds(250)); scrollSection = target
@@ -114,7 +149,7 @@ struct WeatherHomeView: View {
     }
 
     private var brand: some View {
-        HStack(spacing: 8) { VaneMark(size: 27); Text("Vane").font(.title3.bold()) }
+        HStack(spacing: 9) { VaneMark(size: 36); Text("Vane").font(.title2.bold()) }
             .accessibilityElement(children: .combine)
     }
 
@@ -136,15 +171,42 @@ struct WeatherHomeView: View {
     }
 
     private var alertBanner: some View {
-        NavigationLink { WeatherAlertsView(alerts: snapshot.alerts) } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red).font(.title2)
-                VStack(alignment: .leading, spacing: 2) { Text("Official weather alert").font(.headline); Text(snapshot.alerts[0].summary).font(.caption).lineLimit(2) }
-                Spacer(); Image(systemName: "chevron.right").font(.caption.bold())
-            }.padding(16).foregroundStyle(VaneTheme.ink)
+        let alert = orderedAlerts[0]
+        return Button { showAlerts = true } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: alert.severityLevel.symbolName)
+                        .font(.title2)
+                        .foregroundStyle(alert.severityLevel.tint)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(alert.severityLevel.title.uppercased())
+                            .font(.caption2.bold())
+                            .tracking(1)
+                            .foregroundStyle(alert.severityLevel.tint)
+                        Text(orderedAlerts.count == 1 ? "Official weather alert" : "\(orderedAlerts.count) official weather alerts")
+                            .font(.headline)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(VaneTheme.muted)
+                }
+                Text(alert.summary)
+                    .font(.title3.bold())
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(3)
+                HStack(spacing: 10) {
+                    if let region = alert.region { Label(region, systemImage: "mappin.and.ellipse") }
+                    if let expiresAt = alert.expiresAt { Label("Until \(formatting.shortTime(expiresAt))", systemImage: "clock") }
+                }
+                .font(.caption)
+                .foregroundStyle(VaneTheme.muted)
+            }
+            .padding(18)
+            .foregroundStyle(VaneTheme.ink)
+            .background(alert.severityLevel.tint.opacity(colorScheme == .dark ? 0.10 : 0.07), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(.plain)
         .weatherLiquidGlass(radius: 24, interactive: true)
+        .accessibilityHint("Opens official alert details")
     }
 
     private var weatherHero: some View {
@@ -176,6 +238,14 @@ struct WeatherHomeView: View {
                 Text("Updated \(formatting.shortTime(snapshot.updatedAt))")
                 if let accuracy = snapshot.locationAccuracy { Text("·"); Text(accuracy < 1_000 ? "within \(Int(accuracy.rounded())) m" : "approximate location") }
             }.font(.caption2).foregroundStyle(VaneTheme.muted)
+            if !snapshot.current.isDaylight {
+                Label("Nighttime in \(snapshot.locationName)", systemImage: "moon.stars.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(VaneTheme.blue)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(VaneTheme.blue.opacity(0.10), in: Capsule())
+            }
         }.padding(.top, 18).padding(.bottom, 8).accessibilityElement(children: .combine)
     }
 
@@ -306,42 +376,104 @@ struct WeatherHomeView: View {
     }
 
     private var details: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionKicker(title: "Weather details")
-            Button { selectedDetail = .map } label: {
-                detailRow("Conditions map", "Temperature, precipitation and AQI at this location", "map.fill")
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionKicker(title: "Weather details")
+                Spacer()
+                Text("Tap a card to explore")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(VaneTheme.muted)
             }
-            .buttonStyle(.plain)
-            .weatherLiquidGlass(radius: 24, interactive: true)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                detailButton(.wind, "Wind", "\(windUnit.value(snapshot.current.windSpeed)) \(windUnit.title) \(snapshot.current.windDirection)", "wind")
-                if let air = snapshot.airQuality { detailButton(.airQuality, "Air quality", "\(air.index) · \(air.category)", "aqi.medium") }
-                detailButton(.sun, "Sun", snapshot.daily.first?.sunset.map { "Sunset \(formatting.shortTime($0))" } ?? "Times unavailable", "sun.max.fill")
-                detailButton(.moon, "Moon", snapshot.daily.first?.moonPhase.isEmpty == false ? snapshot.daily.first!.moonPhase : "Times unavailable", "moon.stars.fill")
-                detailButton(.visibility, "Visibility", formatting.visibility(snapshot.current.visibility), "eye.fill")
-                detailButton(.pressure, "Pressure", pressureUnit.formatted(snapshot.current.pressure), "gauge.with.dots.needle.50percent")
+
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 10) {
+                    detailButton(.wind, "Wind", "\(windUnit.value(snapshot.current.windSpeed)) \(windUnit.title)", snapshot.current.windDirection, "wind")
+                    detailButton(.sun, "Sun & light", sunSummary, snapshot.current.isDaylight ? "Daylight" : "After dark", snapshot.current.isDaylight ? "sun.max.fill" : "sunrise.fill")
+                    detailButton(.moon, "Moon", snapshot.daily.first?.moonPhase.isEmpty == false ? snapshot.daily.first!.moonPhase : "Unavailable", "Tonight", "moon.stars.fill")
+                    detailButton(.visibility, "Visibility", formatting.visibility(snapshot.current.visibility), visibilityCaption, "eye.fill")
+                    detailButton(.pressure, "Pressure", pressureUnit.formatted(snapshot.current.pressure), snapshot.current.pressureTrend, "gauge.with.dots.needle.50percent")
+                }
+                .scrollTargetLayout()
             }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 0) {
-                metric("Rain chance", snapshot.current.precipitationChance.formatted(.percent.precision(.fractionLength(0))), "drop.fill")
-                metric("Humidity", snapshot.current.humidity.formatted(.percent.precision(.fractionLength(0))), "humidity.fill")
-                metric("Dew point", degrees(snapshot.current.dewPoint), "thermometer.medium")
-                metric("UV index", "\(snapshot.current.uvIndex)", "sun.max.fill")
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+
+            GlassCard(radius: 28) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            SectionKicker(title: "Atmosphere now")
+                            Text("The details behind how it feels")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        Spacer()
+                        Image(systemName: "aqi.medium")
+                            .font(.title2)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(VaneTheme.blue)
+                    }
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        metric("Rain chance", snapshot.current.precipitationChance.formatted(.percent.precision(.fractionLength(0))), "drop.fill", progress: snapshot.current.precipitationChance)
+                        metric("Humidity", snapshot.current.humidity.formatted(.percent.precision(.fractionLength(0))), "humidity.fill", progress: snapshot.current.humidity)
+                        metric("Dew point", degrees(snapshot.current.dewPoint), "thermometer.medium", progress: min(1, max(0, Double(snapshot.current.dewPoint - 30) / 50)))
+                        if snapshot.current.isDaylight {
+                            metric("UV index", "\(snapshot.current.uvIndex)", "sun.max.fill", progress: min(1, Double(snapshot.current.uvIndex) / 11))
+                        } else {
+                            metric("Cloud cover", snapshot.current.cloudCover.formatted(.percent.precision(.fractionLength(0))), "cloud.fill", progress: snapshot.current.cloudCover)
+                        }
+                    }
+                }
+                .padding(18)
             }
-            .padding(8)
-            .weatherLiquidGlass(radius: 28)
         }
     }
 
-    private func detailButton(_ kind: WeatherDetailKind, _ title: String, _ value: String, _ symbol: String) -> some View {
+    private func detailButton(_ kind: WeatherDetailKind, _ title: String, _ value: String, _ caption: String, _ symbol: String) -> some View {
         Button { selectedDetail = kind } label: {
-            VStack(alignment: .leading, spacing: 9) {
-                Label(title, systemImage: symbol).font(.caption).foregroundStyle(VaneTheme.muted)
-                Text(value).font(.headline).minimumScaleFactor(0.7).lineLimit(2)
-                Image(systemName: "arrow.up.right").font(.caption.bold()).foregroundStyle(VaneTheme.blue)
-            }.frame(maxWidth: .infinity, minHeight: 112, alignment: .leading).padding(14).foregroundStyle(VaneTheme.ink)
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: symbol)
+                    .font(.system(size: 72, weight: .ultraLight))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(VaneTheme.blue.opacity(0.09))
+                    .offset(x: 18, y: 14)
+
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Image(systemName: symbol)
+                            .font(.headline)
+                            .foregroundStyle(VaneTheme.blue)
+                            .frame(width: 32, height: 32)
+                            .background(VaneTheme.blue.opacity(0.1), in: Circle())
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(VaneTheme.muted)
+                    }
+                    Spacer(minLength: 12)
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(VaneTheme.muted)
+                    Text(value)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
+                    Text(caption)
+                        .font(.caption2)
+                        .foregroundStyle(VaneTheme.muted)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            }
+            .padding(15)
+            .frame(width: dynamicTypeSize.isAccessibilitySize ? 270 : 188, height: 148)
+            .foregroundStyle(VaneTheme.ink)
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(.plain)
         .weatherLiquidGlass(radius: 24, interactive: true)
+        .accessibilityLabel("\(title), \(value), \(caption)")
+        .accessibilityHint("Opens \(title) details")
     }
 
     private func detailRow(_ title: String, _ value: String, _ symbol: String) -> some View {
@@ -352,9 +484,39 @@ struct WeatherHomeView: View {
         }.padding(16).foregroundStyle(VaneTheme.ink)
     }
 
-    private func metric(_ title: String, _ value: String, _ symbol: String) -> some View {
-        VStack(alignment: .leading, spacing: 7) { Label(title, systemImage: symbol).font(.caption).foregroundStyle(VaneTheme.muted); Text(value).font(.headline).minimumScaleFactor(0.72) }
-            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading).padding(.horizontal, 12)
+    private var visibilityCaption: String {
+        snapshot.current.visibility >= 10 ? "Very clear" : snapshot.current.visibility >= 6 ? "Generally clear" : snapshot.current.visibility >= 3 ? "Reduced" : "Poor"
+    }
+
+    private func metric(_ title: String, _ value: String, _ symbol: String, progress: Double) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: symbol)
+                    .foregroundStyle(VaneTheme.blue)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(VaneTheme.muted)
+                Spacer(minLength: 0)
+            }
+            Text(value)
+                .font(.title3.bold())
+                .minimumScaleFactor(0.72)
+                .lineLimit(1)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(VaneTheme.blue.opacity(0.1))
+                    Capsule()
+                        .fill(VaneTheme.blue.gradient)
+                        .frame(width: max(5, proxy.size.width * min(1, max(0, progress))))
+                }
+            }
+            .frame(height: 5)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
+        .background(VaneTheme.blue.opacity(0.055), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), \(value)")
     }
 
     @ViewBuilder private var attribution: some View {
@@ -370,6 +532,20 @@ struct WeatherHomeView: View {
         let presence = store.checkInPresence(for: snapshot)
         if presence == .verified { showCheckIn = true } else { checkInPresenceWarning = presence }
     }
+
+    private func makeShareCard() {
+        let renderer = ImageRenderer(
+            content: WeatherShareCard(snapshot: snapshot, experience: dayExperience, formatting: formatting)
+                .environment(\.colorScheme, colorScheme)
+        )
+        renderer.scale = 3
+        renderer.isOpaque = true
+        guard let image = renderer.uiImage else { return }
+        sharePayload = WeatherSharePayload(
+            image: image,
+            caption: "\(dayExperience.mood.title) in \(snapshot.locationName) · \(formatting.degrees(snapshot.current.temperature, includeUnit: true)) · Outdoor score \(dayExperience.outdoorScore)/100 · Vane"
+        )
+    }
     private var checkInWarningTitle: String {
         if case .away = checkInPresenceWarning { return "Are you in \(snapshot.locationName)?" }
         return "Can’t verify this location"
@@ -383,6 +559,17 @@ struct WeatherHomeView: View {
     }
     private var bestFitHour: HourlyConditions? {
         GuidanceEngine.bestFitHour(in: snapshot.hourly, temperaturePreference: profile?.temperaturePreference ?? 0, windSensitivity: profile?.windSensitivity ?? 0.5, humiditySensitivity: profile?.humiditySensitivity ?? 0.5, usesFeelsLikeTemperature: profile?.usesFeelsLikeTemperature ?? true, samples: samples, calendar: snapshot.calendar)
+    }
+    private var sunSummary: String {
+        let now = Date()
+        if snapshot.current.isDaylight,
+           let sunset = snapshot.daily.compactMap(\.sunset).first(where: { $0 > now }) {
+            return "Sunset \(formatting.shortTime(sunset))"
+        }
+        if let sunrise = snapshot.daily.compactMap(\.sunrise).first(where: { $0 > now }) {
+            return "Sunrise \(formatting.shortTime(sunrise))"
+        }
+        return "Times unavailable"
     }
     private var bestWindowText: String {
         guard let best = bestFitHour else { return "No familiar daylight window remains" }
@@ -398,7 +585,7 @@ struct WeatherHomeView: View {
 }
 
 
-private struct WeatherLiquidGlassModifier: ViewModifier {
+struct WeatherLiquidGlassModifier: ViewModifier {
     let radius: CGFloat
     let interactive: Bool
 
@@ -424,7 +611,7 @@ private struct WeatherLiquidGlassModifier: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     func weatherLiquidGlass(
         radius: CGFloat = 28,
         interactive: Bool = false

@@ -1,13 +1,16 @@
+import CloudKit
 import SwiftData
 import SwiftUI
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("appearance") private var appearanceRawValue = AppAppearance.system.rawValue
-    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.fahrenheit.rawValue
-    @AppStorage("windUnit") private var windUnitRaw = WindUnitPreference.milesPerHour.rawValue
-    @AppStorage("pressureUnit") private var pressureUnitRaw = PressureUnitPreference.hectopascals.rawValue
-    @AppStorage("precipitationUnit") private var precipitationUnitRaw = PrecipitationUnitPreference.inches.rawValue
+    @AppStorage(AutomaticSunAppearance.enabledKey) private var automaticSunAppearance = false
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw = TemperatureUnitPreference.localizedDefault.rawValue
+    @AppStorage("windUnit") private var windUnitRaw = WindUnitPreference.localizedDefault.rawValue
+    @AppStorage("pressureUnit") private var pressureUnitRaw = PressureUnitPreference.localizedDefault.rawValue
+    @AppStorage("precipitationUnit") private var precipitationUnitRaw = PrecipitationUnitPreference.localizedDefault.rawValue
+    @AppStorage(WeatherLiveActivityManager.enabledKey) private var liveActivitiesEnabled = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @Query private var profiles: [WeatherProfile]
     @Query private var checkIns: [WeatherCheckIn]
@@ -17,6 +20,7 @@ struct SettingsView: View {
     @State private var resetAction: ResetAction?
     @State private var pendingNotification: NotificationCategory?
     @State private var errorMessage: String?
+    @State private var cloudSyncStatus = CloudSyncStatus()
 
     var body: some View {
         ZStack {
@@ -43,7 +47,27 @@ struct SettingsView: View {
                         Text("Choose how often useful moments appear—never streaks or daily obligations.").font(.caption).foregroundStyle(VaneTheme.muted)
                         NavigationLink { CheckInHistoryView() } label: { settingsLink("Check-in history", value: checkIns.isEmpty ? "Empty" : "\(checkIns.count)", symbol: "clock.arrow.circlepath") }
                     }
+                    settingsCard("Live Activities", symbol: "waveform.path.ecg") {
+                        Toggle(isOn: liveActivitiesBinding) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Weather moments").font(.subheadline.weight(.medium))
+                                Text("Rain countdowns, storm alerts and strong outdoor windows")
+                                    .font(.caption)
+                                    .foregroundStyle(VaneTheme.muted)
+                            }
+                        }
+                        .tint(VaneTheme.blue)
+                        Text("When something useful is approaching, Vane can keep it visible on the Lock Screen and Dynamic Island. Activities update with Vane’s latest forecast and end when the moment passes.")
+                            .font(.caption)
+                            .foregroundStyle(VaneTheme.muted)
+                        if liveActivitiesEnabled && !WeatherLiveActivityManager.shared.systemActivitiesEnabled {
+                            Text("Live Activities are currently disabled for Vane in iPhone Settings.")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(VaneTheme.muted)
+                        }
+                    }
                     settingsCard("Useful alerts", symbol: "bell.badge.fill") {
+                        notificationToggle(.severe, "Official weather alerts", "When a Vane refresh finds a new alert")
                         notificationToggle(.rain, "Rain", "When rain becomes likely")
                         notificationToggle(.snow, "Snow", "A distinct snow heads-up")
                         notificationToggle(.uv, "Strong UV", "Objective sun safety")
@@ -52,17 +76,38 @@ struct SettingsView: View {
                         notificationToggle(.tomorrow, "Tomorrow preview", "An evening look ahead")
                         notificationToggle(.smartCheckIn, "Smart check-ins", "Only useful learning moments")
                         Text(notificationNote).font(.caption).foregroundStyle(VaneTheme.muted)
+                        Text("Vane’s alert heads-ups depend on background refresh and are not a replacement for government emergency alerts.")
+                            .font(.caption)
+                            .foregroundStyle(VaneTheme.muted)
                         if notifications.authorizationStatus == .denied { Button("Open iPhone Settings") { notifications.openSettings() }.font(.subheadline.bold()) }
                     }
                     settingsCard("Location & data", symbol: "location.fill") {
                         Button { if store.authorizationStatus == .denied || store.authorizationStatus == .restricted { store.openLocationSettings() } else { store.requestCurrentLocation() } } label: {
                             settingsLink(store.authorizationStatus == .denied || store.authorizationStatus == .restricted ? "Open location settings" : "Refresh current location", value: nil, symbol: "location.circle")
                         }
-                        Text("Weather comes from Apple Weather. AQI uses an attributed CAMS model through Open-Meteo; the active location coordinate is sent only to request that reading.").font(.caption).foregroundStyle(VaneTheme.muted)
+                        Text("Forecasts come from Apple Weather. Vane does not request a separate air-quality model.").font(.caption).foregroundStyle(VaneTheme.muted)
                         if let attribution = store.attribution { Link(destination: attribution.legalPageURL) { settingsLink("Apple Weather attribution", value: nil, symbol: "apple.logo") } }
                     }
+                    settingsCard("iCloud sync", symbol: "icloud.fill") {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: cloudSyncStatus.availability.symbol)
+                                .foregroundStyle(VaneTheme.blue)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(cloudSyncStatus.availability.title)
+                                    .font(.subheadline.weight(.semibold))
+                                Text(cloudSyncStatus.availability.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(VaneTheme.muted)
+                            }
+                        }
+                        Button("Check iCloud again") {
+                            Task { await cloudSyncStatus.refresh() }
+                        }
+                        .font(.subheadline.weight(.semibold))
+                    }
                     settingsCard("Privacy & resets", symbol: "hand.raised.fill") {
-                        Text("Your profile and check-ins stay on this device. No account is required.").font(.caption).foregroundStyle(VaneTheme.muted)
+                        Text("Your profile, check-ins and saved places use your private iCloud database so they can follow you across Vane apps. Vane does not require a separate account.").font(.caption).foregroundStyle(VaneTheme.muted)
                         Link(destination: URL(string: "https://vane.codearc.studio/privacy/")!) { settingsLink("Privacy policy", value: nil, symbol: "lock.shield") }
                         Link(destination: URL(string: "https://vane.codearc.studio/terms/")!) { settingsLink("Terms", value: nil, symbol: "doc.text") }
                         destructiveButton("Delete check-in history", action: .history)
@@ -93,6 +138,10 @@ struct SettingsView: View {
             Button("Continue") { if let pendingNotification { Task { await setNotification(pendingNotification, enabled: true) } }; pendingNotification = nil }
         } message: { Text("Vane will ask iOS for permission so it can send the category you chose. It will not send engagement nudges.") }
         .alert("Vane couldn’t finish that deletion", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) { Button("OK") {} } message: { Text(errorMessage ?? "Please try again.") }
+        .task { await cloudSyncStatus.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .CKAccountChanged)) { _ in
+            Task { await cloudSyncStatus.refresh() }
+        }
     }
 
     private var appearancePicker: some View {
@@ -103,6 +152,7 @@ struct SettingsView: View {
 
                     Button {
                         withAnimation(.spring(duration: 0.32, bounce: 0.08)) {
+                            automaticSunAppearance = false
                             appearanceRawValue = appearance.rawValue
                         }
                     } label: {
@@ -142,10 +192,41 @@ struct SettingsView: View {
                 }
             }
 
-            Text("System follows your iPhone. Light and Dark keep Vane in that appearance.")
+            Toggle(isOn: automaticSunAppearanceBinding) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Dark after sunset")
+                        .font(.subheadline.weight(.medium))
+                    Text("Switches to true Dark at sunset and back to Light at sunrise for the forecast location.")
+                        .font(.caption)
+                        .foregroundStyle(VaneTheme.muted)
+                }
+            }
+            .tint(VaneTheme.blue)
+
+            Text(automaticSunAppearance
+                 ? "Following \(store.snapshot.locationName)’s daylight. Vane is currently \(currentAppearance.title). Choosing a mode above turns this off."
+                 : "System follows your iPhone. Light and Dark keep Vane in that appearance.")
                 .font(.caption)
                 .foregroundStyle(VaneTheme.muted)
         }
+    }
+
+    private var currentAppearance: AppAppearance {
+        AppAppearance(rawValue: appearanceRawValue) ?? .system
+    }
+
+    private var automaticSunAppearanceBinding: Binding<Bool> {
+        Binding(
+            get: { automaticSunAppearance },
+            set: { enabled in
+                automaticSunAppearance = enabled
+                guard enabled,
+                      let appearance = AutomaticSunAppearance.appearance(for: store.snapshot) else { return }
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    appearanceRawValue = appearance.rawValue
+                }
+            }
+        )
     }
 
     private func settingsCard<Content: View>(
@@ -184,8 +265,29 @@ struct SettingsView: View {
         HStack {
             Text(title).font(.subheadline.weight(.medium))
             Spacer()
-            Picker(title, selection: selection) { ForEach(values, id: \.0) { Text($0.1).tag($0.0) } }
-                .labelsHidden().tint(VaneTheme.blue)
+            Menu {
+                ForEach(values, id: \.0) { value in
+                    Button {
+                        selection.wrappedValue = value.0
+                    } label: {
+                        if selection.wrappedValue == value.0 {
+                            Label(value.1, systemImage: "checkmark")
+                        } else {
+                            Text(value.1)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(values.first(where: { $0.0 == selection.wrappedValue })?.1 ?? "Choose")
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.bold())
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(VaneTheme.blue)
+            }
         }.frame(minHeight: 42)
     }
 
@@ -229,9 +331,24 @@ struct SettingsView: View {
         if notifications.pendingCount > 0 { return "\(notifications.pendingCount) useful reminder\(notifications.pendingCount == 1 ? "" : "s") scheduled from the latest forecast." }
         return "Local reminders are rebuilt for the active forecast location. Morning and evening times follow that location’s local clock."
     }
+    private var liveActivitiesBinding: Binding<Bool> {
+        Binding(
+            get: { liveActivitiesEnabled },
+            set: { enabled in
+                liveActivitiesEnabled = enabled
+                Task {
+                    if enabled {
+                        await WeatherLiveActivityManager.shared.synchronize(snapshot: store.snapshot)
+                    } else {
+                        await WeatherLiveActivityManager.shared.endAll()
+                    }
+                }
+            }
+        )
+    }
     private var frequencyBinding: Binding<String> { Binding(get: { profiles.first?.checkInFrequencyRaw ?? CheckInFrequency.recommended.rawValue }, set: { value in profiles.first?.checkInFrequencyRaw = value; try? modelContext.save() }) }
-    private var guidanceSamples: [GuidanceSample] { checkIns.compactMap { checkIn in guard let response = checkIn.feelResponse else { return nil }; return GuidanceSample(date: checkIn.createdAt, apparentTemperature: checkIn.apparentTemperature, humidity: checkIn.humidity, windSpeed: checkIn.windSpeed, response: response, contexts: checkIn.contexts, cloudCover: checkIn.cloudCover ?? 0.5, isTravel: checkIn.isTravel) } }
-    private var version: String { "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))" }
+    private var guidanceSamples: [GuidanceSample] { checkIns.compactMap { $0.guidanceSample() } }
+    private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
 
     private func perform(_ action: ResetAction) {
         do {
@@ -270,9 +387,9 @@ private enum ResetAction: Equatable {
     var symbol: String { self == .history ? "trash" : self == .sense ? "arrow.counterclockwise" : "exclamationmark.triangle" }
     var message: String {
         switch self {
-        case .history: "This removes each weather moment from this iPhone. Your starting preference and saved places remain."
-        case .sense: "This removes what Sense has learned and reopens onboarding so you can choose a fresh starting preference. Saved places remain."
-        case .all: "This removes check-ins, your Sense profile, saved places, app preferences, and pending Vane notifications from this iPhone. Onboarding will begin again."
+        case .history: "This removes each weather moment from Vane on your iCloud devices. Your starting preference and saved places remain."
+        case .sense: "This removes what Sense has learned from Vane on your iCloud devices and reopens onboarding so you can choose a fresh starting preference. Saved places remain."
+        case .all: "This removes check-ins, your Sense profile and saved places from Vane on your iCloud devices. App preferences and pending notifications are also cleared on this iPhone. Onboarding will begin again."
         }
     }
 }
