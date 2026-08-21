@@ -82,10 +82,10 @@
         A493D3443037F28D00C94725 /* Exceptions for "Vane" folder in "Vane" target */ = {
             isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
             membershipExceptions = (
-                Vane.icon,
             );
             target = A49C43E4302E2A3B00654455 /* Vane */;
         };
         D30000130000000000000013 /* Exceptions for "VaneShared" folder in "VaneWatch" target */ = {
             isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
             membershipExceptions = (
+                VaneWeatherActivityAttributes.swift,
