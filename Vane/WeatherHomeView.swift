@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import CoreLocation
 
 struct WeatherHomeView: View {
     @Environment(\.colorScheme) private var colorScheme
