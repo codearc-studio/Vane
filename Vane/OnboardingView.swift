@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import CoreLocation
 
 struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
