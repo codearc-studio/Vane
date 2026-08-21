@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 110;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -86,6 +86,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A4709DF13037F0C1006CCB63 /* Exceptions for "Vane" folder in "Vane" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Vane.icon,
+			);
+			target = A49C43E4302E2A3B00654455 /* Vane */;
+		};
 		D30000130000000000000013 /* Exceptions for "VaneShared" folder in "VaneWatch" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -107,6 +114,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A49C43E7302E2A3B00654455 /* Vane */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A4709DF13037F0C1006CCB63 /* Exceptions for "Vane" folder in "Vane" target */,
+			);
 			path = Vane;
 			sourceTree = "<group>";
 		};
@@ -580,7 +590,7 @@
 		A49C43F3302E2A3C00654455 /* Debug configuration for PBXNativeTarget "Vane" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = Vane;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Vane/Vane.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -626,7 +636,7 @@
 		A49C43F4302E2A3C00654455 /* Release configuration for PBXNativeTarget "Vane" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = Vane;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Vane/Vane.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -782,7 +792,7 @@
 		D30000080000000000000008 /* Debug configuration for PBXNativeTarget "VaneWatch" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = Vane;
+				ASSETCATALOG_COMPILER_APPICON_NAME = WatchAppIcon;
 				CODE_SIGN_ENTITLEMENTS = VaneWatch/VaneWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
@@ -818,7 +828,7 @@
 		D30000090000000000000009 /* Release configuration for PBXNativeTarget "VaneWatch" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = Vane;
+				ASSETCATALOG_COMPILER_APPICON_NAME = WatchAppIcon;
 				CODE_SIGN_ENTITLEMENTS = VaneWatch/VaneWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
