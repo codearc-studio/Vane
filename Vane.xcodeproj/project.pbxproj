@@ -328,11 +328,11 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2700;
-				LastUpgradeCheck = 2700;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					A49C43E4302E2A3B00654455 = {
-						CreatedOnToolsVersion = 27.0;
+						CreatedOnToolsVersion = 26.0;
 						SystemCapabilities = {
 							com.apple.Push = {
 								enabled = 1;
@@ -343,17 +343,17 @@
 						};
 					};
 					B10000040000000000000004 = {
-						CreatedOnToolsVersion = 27.0;
+						CreatedOnToolsVersion = 26.0;
 						TestTargetID = A49C43E4302E2A3B00654455;
 					};
 					C20000070000000000000007 = {
-						CreatedOnToolsVersion = 27.0;
+						CreatedOnToolsVersion = 26.0;
 					};
 					D30000070000000000000007 = {
-						CreatedOnToolsVersion = 27.0;
+						CreatedOnToolsVersion = 26.0;
 					};
 					E40000070000000000000007 = {
-						CreatedOnToolsVersion = 27.0;
+						CreatedOnToolsVersion = 26.0;
 					};
 				};
 			};
